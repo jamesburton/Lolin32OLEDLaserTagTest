@@ -480,3 +480,9 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# PlatformIO build directory and cache
+.pio/
+
+# Local signature-library backups / scratch captures
+signatures.*-backup.json

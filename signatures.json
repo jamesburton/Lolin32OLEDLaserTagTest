@@ -1,0 +1,314 @@
+[
+  {
+    "Device": "TV Remote",
+    "Button": "1",
+    "NecCode": "0707:04",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "2",
+    "NecCode": "0707:05",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "3",
+    "NecCode": "0707:06",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "4",
+    "NecCode": "0707:08",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "5",
+    "NecCode": "0707:09",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "6",
+    "NecCode": "0707:0A",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "7",
+    "NecCode": "0707:0C",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "8",
+    "NecCode": "0707:0D",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "9",
+    "NecCode": "0707:0E",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "0",
+    "NecCode": "0707:11",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "Up",
+    "NecCode": "0707:60",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "Down",
+    "NecCode": "0707:61",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "Left",
+    "NecCode": "0707:65",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "Right",
+    "NecCode": "0707:62",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "OK",
+    "NecCode": "0707:68",
+    "Samples": 4
+  },
+  {
+    "Device": "TV Remote",
+    "Button": "Home",
+    "NecCode": "0707:79",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Blue Pistol",
+    "RawSig": "10000000010101010000000010000000100000110",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Blue Shotgun",
+    "RawSig": "10000000010101010000000010000001000000111",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Blue Submachine Gun",
+    "RawSig": "10000000010101010000000010000001100001000",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Blue Machine Gun",
+    "RawSig": "10000000010101010000000010000001000000111",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Blue Rocket",
+    "RawSig": "10000000010101010000000010000010000001001",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Red Pistol",
+    "RawSig": "10000000010101010000000100000000100000111",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Red Shotgun",
+    "RawSig": "10000000010101010000000100000001000001000",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Red Submachine Gun",
+    "RawSig": "10000000010101010000000100000001100001001",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Red Machine Gun",
+    "RawSig": "10000000010101010000000100000001000001000",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Red Rocket",
+    "RawSig": "10000000010101010000000100000010000001011",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Green Pistol",
+    "RawSig": "10000000010101010000000110000000100001000",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Green Shotgun",
+    "RawSig": "10000000010101010000000110000001000001001",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Green Submachine Gun",
+    "RawSig": "10000000010101010000000110000001100001011",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Green Machine Gun",
+    "RawSig": "10000000010101010000000110000001000001001",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Green Rocket",
+    "RawSig": "10000000010101010000000110000010000001100",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "White Pistol",
+    "RawSig": "10000000010101010000001000000000100001001",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "White Shotgun",
+    "RawSig": "10000000010101010000001000000001000001011",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "White Rocket",
+    "RawSig": "10000000010101010000001000000010000001101",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "White Submachine Gun",
+    "RawSig": "10000000010101010000001000000001100001100",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "White Machine Gun",
+    "RawSig": "10000000010101010000001000000001000001011",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Blue/dmg3",
+    "RawSig": "10000000010101010000000010000001100001000",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Blue/dmg4",
+    "RawSig": "10000000010101010000000010000010000001001",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Red/dmg1",
+    "RawSig": "10000000010101010000000100000000100000111",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Red/dmg2",
+    "RawSig": "10000000010101010000000100000001000001000",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Red/dmg3",
+    "RawSig": "10000000010101010000000100000001100001001",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Red/dmg4",
+    "RawSig": "10000000010101010000000100000010000001011",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Green/dmg1",
+    "RawSig": "10000000010101010000000110000000100001000",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Green/dmg2",
+    "RawSig": "10000000010101010000000110000001000001001",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Green/dmg3",
+    "RawSig": "10000000010101010000000110000001100001011",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Green/dmg4",
+    "RawSig": "10000000010101010000000110000010000001100",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "White/dmg1",
+    "RawSig": "10000000010101010000001000000000100001001",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "White/dmg2",
+    "RawSig": "10000000010101010000001000000001000001011",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "White/dmg3",
+    "RawSig": "10000000010101010000001000000001100001100",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "White/dmg4",
+    "RawSig": "10000000010101010000001000000010000001101",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Blue/dmg1",
+    "RawSig": "10000000010101010000000010000000100000110",
+    "Samples": 4
+  },
+  {
+    "Device": "Gun",
+    "Button": "Blue/dmg2",
+    "RawSig": "10000000010101010000000010000001000000111",
+    "Samples": 4
+  }
+]
