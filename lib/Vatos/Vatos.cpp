@@ -33,7 +33,14 @@ bool decode(const uint32_t *edgeDurationsUs, size_t count, Shot &out) {
 
   bool bits[FrameEdges];
   for (size_t i = 0; i < FrameEdges; i++) {
-    bits[i] = edgeDurationsUs[i] > QuantThresholdUs;
+    const uint32_t d = edgeDurationsUs[i];
+    // Reject if any symbol sits too near the short/long threshold: clean frames
+    // are well separated (~380 vs ~800 us), so a mid-band symbol means the frame
+    // is corrupted (e.g. LED interference) and could decode to the wrong code.
+    if (d > QuantThresholdUs - 100 && d < QuantThresholdUs + 100) {
+      return false;
+    }
+    bits[i] = d > QuantThresholdUs;
   }
 
   // Every non-field bit must match the constant framing

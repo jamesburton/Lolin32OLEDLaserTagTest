@@ -1,12 +1,19 @@
 # Lolin32 OLED Laser Tag
 
 Reverse-engineering, decoding, and transmitting **Vatos** infrared laser-tag
-signals on a Wemos **Lolin32 OLED** board (ESP32 + 128×32 SSD1306).
+signals across two ESP32 boards:
 
-The firmware reads IR with a VS1838B receiver, decodes both NEC remotes and the
-(previously undocumented) Vatos gun protocol live to the OLED, and can transmit
-Vatos shots through an IR LED. A companion C# console app tags incoming signals
-against named devices/buttons over the serial link.
+- **Lolin32 OLED** (ESP32 + 128×32 SSD1306) — IR monitor / decoder / transmitter
+  and the C# trainer feeder. Reads NEC remotes and Vatos shots to the OLED, and
+  fires Vatos shots via an IR LED.
+- **ESP32-S3-Matrix** (ESP32-S3 + 8×8 WS2812) — a wearable **target**: idles in
+  a rainbow, flashes the firing team's colour when hit, then goes dark for
+  5–15 s before resuming.
+
+Both boards support **wireless OTA updates and UDP telemetry** (see
+[Wireless](#wireless)). Shared logic lives in libraries: `lib/Vatos`
+(decode/encode), `lib/IrFramer` (IR edge framing), `lib/TagNet`
+(WiFi + OTA + telemetry).
 
 > The Vatos IR protocol is not documented publicly; the protocol description in
 > `docs/gun-protocol.md` was reverse-engineered from scratch in this project.
@@ -43,13 +50,28 @@ against named devices/buttons over the serial link.
 
 ## Hardware
 
+### Lolin32 OLED (monitor / decoder / transmitter)
+
 | Function | Pin | Notes |
 | -------- | --- | ----- |
 | OLED I²C | SDA = GPIO5, SCL = GPIO4 | SSD1306, **128×32**, address `0x3C` |
 | IR receiver (VS1838B) | OUT = GPIO25 | demodulating; idles HIGH, pulses LOW |
 | Activity LED | GPIO26 | blinks ~80 ms on each received frame |
 | IR transmit LED | GPIO13 | 38 kHz carrier via the LEDC peripheral |
-| Test-shot trigger | GPIO0 (BOOT) **or** serial | any serial byte also fires a shot |
+| Test-shot trigger | GPIO0 (BOOT) **or** serial | any serial line also fires a shot |
+
+### ESP32-S3-Matrix (target)
+
+| Function | Pin | Notes |
+| -------- | --- | ----- |
+| 8×8 WS2812 matrix | GPIO14 | on-board, 64 LEDs (NeoPixel) |
+| IR receiver (VS1838B) | OUT = GPIO1 | GPIO10–14 are taken by the IMU/matrix |
+| Activity LED | GPIO7 | blinks on each received frame |
+| (reserved) | GPIO10–13 | on-board QMI8658 IMU |
+
+Behaviour: rainbow when idle → on a Vatos hit, flash the firing team's colour
+(Blue/Red/Green/White) 4× → dark for a random 5–15 s → resume rainbow. Matrix
+current is capped to 500 mA (`setMaxPowerInVoltsAndMilliamps`) for USB safety.
 
 Notes:
 
@@ -79,10 +101,16 @@ pio device monitor -p COM14 -b 115200                # serial monitor
 
 Environments:
 
-- `lolin32` — the main firmware (`src/main.cpp`).
+- `lolin32` — Lolin32 firmware (`src/main.cpp`).
 - `lolin32_displaytest` — the OLED config finder (`src/display_test.cpp`).
+- `esp32-s3-matrix` — Matrix target firmware (`src/matrix_main.cpp`).
+- `*-ota` — wireless-upload variants (see [Wireless](#wireless)).
 
-### Flashing workaround (this board)
+```sh
+pio run -e esp32-s3-matrix -t upload --upload-port COM7   # flash the Matrix
+```
+
+### Flashing workaround (Lolin32)
 
 This particular board has **no BOOT/EN buttons** and its USB auto-reset into the
 bootloader is unreliable, so uploads may fail with
@@ -94,6 +122,46 @@ bootloader is unreliable, so uploads may fail with
 
 If the board disappears from Windows entirely, unplug/replug the USB to
 re-enumerate the CP210x serial port.
+
+---
+
+## Wireless
+
+Both firmware targets bring up WiFi, ArduinoOTA, and UDP telemetry via the
+shared `lib/TagNet` library.
+
+### Set WiFi credentials (over serial)
+
+Credentials are stored in NVS, set with serial commands (no rebuild):
+
+```powershell
+./tools/set-wifi.ps1 -Port COM14 -Ssid "MyNetwork" -Password "s3cret"
+```
+
+or manually in a serial monitor: `ssid <name>`, `pass <pw>`, `wifi-save`
+(also `wifi-status`, `wifi-clear`). The board prints its IP once connected.
+
+### OTA updates
+
+After one USB flash + WiFi provisioning, update over the air:
+
+```sh
+pio run -e lolin32-ota -t upload          # -> lasertag-lolin32.local
+pio run -e esp32-s3-matrix-ota -t upload  # -> lasertag-matrix.local
+```
+
+(Edit `upload_port` in `platformio.ini` to an IP if mDNS `.local` resolution
+isn't available on your network.)
+
+### Telemetry monitoring
+
+Devices broadcast events (hits, transmits, state changes) as UDP lines on port
+4210. The `tools/TagMonitor` console app prints them:
+
+```sh
+dotnet run --project tools/TagMonitor
+# [14:02:11] 192.168.1.50   lasertag-matrix hit team=1(Blue) dmg=2
+```
 
 ---
 
@@ -248,16 +316,21 @@ A condensed log of the build, because most of the value was in the process:
 ## Repository layout
 
 ```
-platformio.ini            PlatformIO config (lolin32 / lolin32_displaytest envs)
+platformio.ini            PlatformIO config (lolin32 / displaytest / matrix + OTA)
 src/
-  main.cpp                Firmware: RX + NEC/Vatos decode, OLED, IR transmit
+  main.cpp                Lolin32: RX + NEC/Vatos decode, OLED, IR transmit
+  matrix_main.cpp         ESP32-S3-Matrix: 8x8 LED target (rainbow/hit/dark)
   display_test.cpp        OLED driver/geometry config finder (separate env)
 lib/
-  Vatos/                  Platform-independent Vatos decode/encode library
+  Vatos/                  Platform-independent Vatos decode/encode
+  IrFramer/               Shared IR edge-framing (ISR + frame assembly)
+  TagNet/                 Shared WiFi (serial creds) + OTA + UDP telemetry
 tools/
   IrSignalTrainer/        C# serial trainer + signature library
+  TagMonitor/             C# UDP telemetry listener
+  set-wifi.ps1            Provision WiFi credentials over serial
 docs/
-  device-info.md          Board pinout and OLED details
+  device-info.md          Lolin32 board pinout and OLED details
   sensor-comparison.md    KEYES comparator board vs VS1838B
   gun-protocol.md         The reverse-engineered Vatos IR protocol
 signatures.json           Example trained signature library (TV remote + gun)

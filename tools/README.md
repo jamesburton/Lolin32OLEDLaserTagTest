@@ -47,6 +47,43 @@ Training stores whichever form applies. `signatures.json` is the library:
 ]
 ```
 
+## set-wifi.ps1
+
+Provisions WiFi credentials on a board over serial (TagNet stores them in NVS,
+then connects). Works for both boards.
+
+```powershell
+./tools/set-wifi.ps1 -Port COM14 -Ssid "MyNetwork" -Password "s3cret"
+```
+
+Equivalent manual commands in any serial monitor (one per line):
+
+```
+ssid MyNetwork
+pass s3cret
+wifi-save
+```
+
+Other TagNet commands: `wifi-status`, `wifi-clear`. Once connected the board
+reports its IP — use that (or `lasertag-<board>.local`) for OTA and monitoring.
+
+## TagMonitor
+
+A .NET console app that listens for the boards' UDP telemetry broadcasts
+(hits, transmits, state changes) and prints them with timestamps.
+
+```sh
+dotnet run --project tools/TagMonitor        # listens on UDP 4210
+```
+
+Example output:
+
+```
+[14:02:11] 192.168.1.50    lasertag-matrix hit team=1(Blue) dmg=2
+[14:02:11] 192.168.1.50    lasertag-matrix dark 8200ms
+[14:02:19] 192.168.1.50    lasertag-matrix rainbow
+```
+
 ## Firmware serial protocol
 
 The firmware (`src/main.cpp`) emits, per received IR burst:
