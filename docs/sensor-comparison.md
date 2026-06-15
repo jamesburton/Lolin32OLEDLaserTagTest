@@ -47,11 +47,10 @@ the VS1838B has no analog output.
 
 ## Notes / follow-ups
 
-- **Carrier frequency of the laser-tag gun is still unmeasured.** The VS1838B is
-  a 38 kHz part; if it reads the gun cleanly, the gun is ~38 kHz. If it is deaf
-  to the gun while still reading TV remotes, the gun is likely 56 kHz (MilesTag)
-  or uncarriered — would then need a 56 kHz receiver (e.g. TSOP4856). Test when
-  the gun is to hand.
+- **Carrier frequency of the laser-tag gun: ~38 kHz (resolved).** The VS1838B (a
+  38 kHz part) reads the gun cleanly and consistently, confirming the carrier is
+  ~38 kHz — no 56 kHz receiver (e.g. TSOP4856) is needed, and the gun is not NEC.
+  See `gun-protocol.md`.
 - **`FRAME_GAP_US` (50 ms)** was chosen for the gun, whose full-auto weapons
   showed 6–12 ms gaps *within* a single frame. At 50 ms the NEC repeat code
   (~48 ms later) gets appended to the remote frame as a deterministic tail.

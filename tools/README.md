@@ -65,12 +65,15 @@ wifi-save
 ```
 
 Other TagNet commands: `wifi-status`, `wifi-clear`. Once connected the board
-reports its IP — use that (or `lasertag-<board>.local`) for OTA and monitoring.
+reports its IP — use that **IP** for OTA and monitoring (mDNS
+`lasertag-<board>.local` is best-effort and does not resolve on every host).
 
 ## TagMonitor
 
-A .NET console app that listens for the boards' UDP telemetry broadcasts
-(hits, transmits, state changes) and prints them with timestamps.
+A .NET console app that listens for the boards' UDP telemetry broadcasts and
+prints them raw with a timestamp + source IP. Devices emit the V2 control-plane
+line-protocol (heartbeats `HB`, telemetry `EVT`); see the
+[control-plane contract](../docs/superpowers/specs/2026-06-15-control-plane-contract.md).
 
 ```sh
 dotnet run --project tools/TagMonitor        # listens on UDP 4210
@@ -79,9 +82,32 @@ dotnet run --project tools/TagMonitor        # listens on UDP 4210
 Example output:
 
 ```
-[14:02:11] 192.168.1.50    lasertag-matrix hit team=1(Blue) dmg=2
-[14:02:11] 192.168.1.50    lasertag-matrix dark 8200ms
-[14:02:19] 192.168.1.50    lasertag-matrix rainbow
+[15:30:01] 192.168.1.24   lasertag-matrix HB id=752b38 ip=192.168.1.24 fw=2.0.0 team=2 mode=idle hp=100 online=1
+[15:30:05] 192.168.1.24   lasertag-matrix EVT hit victim=752b38 shooterTeam=2 dmg=2 proto=vatos hp=80 ts=12345
+[15:30:05] 192.168.1.24   lasertag-matrix EVT state s=stunned hp=80 ts=12500
+```
+
+For typed access (parse into records, track a live roster, drive the REST API),
+use the **`dotnet/LaserTag.Client`** library instead of parsing raw lines.
+
+> **Nothing printed but REST works?** Missing inbound firewall rule for UDP 4210,
+> or a lossy weak-RSSI link — see `setup-firewall.ps1`/`.sh` below.
+
+## setup-firewall.ps1 / setup-firewall.sh
+
+Checks (and optionally fixes) the host firewall so the UDP listener can receive
+telemetry on port 4210. A missing inbound rule is one common cause of "REST
+works but no heartbeats" (a lossy link is the other).
+
+```powershell
+./tools/setup-firewall.ps1            # Windows: check, then offer to add (self-elevates via UAC)
+./tools/setup-firewall.ps1 -Check     # diagnose only (exit 0 = ok, 1 = missing)
+./tools/setup-firewall.ps1 -Remove    # undo
+```
+
+```sh
+./tools/setup-firewall.sh             # Linux (ufw/firewalld via sudo); macOS verify+advise
+./tools/setup-firewall.sh --check     # diagnose only
 ```
 
 ## Firmware serial protocol

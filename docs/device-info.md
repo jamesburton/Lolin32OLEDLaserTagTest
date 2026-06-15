@@ -18,6 +18,15 @@ standard ESP32 dev board, intended for small display-driven projects.
 | Battery           | LiPo connector with on-board charging (Lolin32) |
 | Logic level       | 3.3 V                                           |
 
+> **This unit:** the panel is actually a **128×32** SSD1306 (not the 128×64 the
+> spec/community examples assume). Driving it as 128×64 renders garbled,
+> interlaced text — `src/display_test.cpp` was used to find the right geometry.
+>
+> **Flashing this unit:** USB auto-reset into the bootloader is unreliable, so
+> wired uploads need a **GPIO0 → GND** jumper during the upload (remove it
+> afterward and reset). After one wired flash + WiFi provisioning, prefer OTA.
+> See the README's "Build, flash, monitor" and "Wireless" sections.
+
 ## OLED Display Wiring (fixed, on-board)
 
 | Signal | ESP32 Pin |

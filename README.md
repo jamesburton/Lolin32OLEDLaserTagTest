@@ -7,13 +7,16 @@ signals across two ESP32 boards:
   and the C# trainer feeder. Reads NEC remotes and Vatos shots to the OLED, and
   fires Vatos shots via an IR LED.
 - **ESP32-S3-Matrix** (ESP32-S3 + 8×8 WS2812) — a wearable **target**: idles in
-  a rainbow, flashes the firing team's colour when hit, then goes dark for
-  5–15 s before resuming.
+  a rainbow, tracks its own health, flashes the firing team's colour and goes
+  briefly dark when hit, and holds dark when its health reaches zero.
 
 Both boards support **wireless OTA updates and UDP telemetry** (see
-[Wireless](#wireless)). Shared logic lives in libraries: `lib/Vatos`
-(decode/encode), `lib/IrFramer` (IR edge framing), `lib/TagNet`
-(WiFi + OTA + telemetry).
+[Wireless](#wireless)). A **network control plane** (REST + UDP) configures and
+controls devices, with a **.NET client library** on the host side (see
+[Control plane](#control-plane-v2)). Shared logic lives in libraries:
+`lib/Vatos` (decode/encode), `lib/IrFramer` (IR edge framing), `lib/TagNet`
+(WiFi + OTA + HTTP + UDP), and `lib/ControlProto` (the protocol-agnostic wire
+codec for the control plane).
 
 > The Vatos IR protocol is not documented publicly; the protocol description in
 > `docs/gun-protocol.md` was reverse-engineered from scratch in this project.
@@ -25,6 +28,8 @@ Both boards support **wireless OTA updates and UDP telemetry** (see
 - [What it does](#what-it-does)
 - [Hardware](#hardware)
 - [Build, flash, monitor](#build-flash-monitor)
+- [Wireless](#wireless)
+- [Control plane (V2)](#control-plane-v2)
 - [How it works](#how-it-works)
 - [The Vatos protocol (reverse-engineered)](#the-vatos-protocol-reverse-engineered)
 - [The Vatos library](#the-vatos-library)
@@ -45,6 +50,10 @@ Both boards support **wireless OTA updates and UDP telemetry** (see
   + checksum), triggered by the BOOT button or any byte over serial.
 - **Trains/recognises** signals from a PC via the C# `IrSignalTrainer` app,
   matching NEC codes exactly and other protocols by full-frame fingerprint.
+- **Networks** the target: broadcasts discovery heartbeats and hit/state
+  telemetry over UDP, serves a JSON REST API for config/control, accepts
+  low-latency UDP control broadcasts, and is driven from a host-side **.NET
+  client library** (see [Control plane](#control-plane-v2)).
 
 ---
 
@@ -69,9 +78,14 @@ Both boards support **wireless OTA updates and UDP telemetry** (see
 | Activity LED | GPIO7 | blinks on each received frame |
 | (reserved) | GPIO10–13 | on-board QMI8658 IMU |
 
-Behaviour: rainbow when idle → on a Vatos hit, flash the firing team's colour
-(Blue/Red/Green/White) 4× → dark for a random 5–15 s → resume rainbow. Matrix
-current is capped to 500 mA (`setMaxPowerInVoltsAndMilliamps`) for USB safety.
+Behaviour: rainbow when idle → on a Vatos hit, subtract the shot's damage from
+its health, flash the firing team's colour (Blue/Red/Green/White) 4×, then go
+dark for a brief configurable "stunned" interval (default ~1–5 s; tune via the
+control plane) → resume rainbow, keeping accumulated damage. At **0 health** it
+holds dark ("dead") until a respawn / reset. The device is **authoritative for
+its own health** and emits `EVT hit` / `EVT state` telemetry as it changes (see
+[Control plane](#control-plane-v2)). Matrix current is capped to 500 mA
+(`setMaxPowerInVoltsAndMilliamps`) for USB safety.
 
 Notes:
 
@@ -90,8 +104,8 @@ Notes:
 
 ## Build, flash, monitor
 
-[PlatformIO](https://platformio.org/) project (Arduino framework, board
-`lolin32`).
+[PlatformIO](https://platformio.org/) project (Arduino framework; boards
+`lolin32` and `esp32-s3-devkitc-1`, plus a `native` env for unit tests).
 
 ```sh
 pio run -e lolin32                                   # build
@@ -104,10 +118,12 @@ Environments:
 - `lolin32` — Lolin32 firmware (`src/main.cpp`).
 - `lolin32_displaytest` — the OLED config finder (`src/display_test.cpp`).
 - `esp32-s3-matrix` — Matrix target firmware (`src/matrix_main.cpp`).
+- `native` — host-compiled unit tests for `lib/ControlProto` (no board).
 - `*-ota` — wireless-upload variants (see [Wireless](#wireless)).
 
 ```sh
 pio run -e esp32-s3-matrix -t upload --upload-port COM7   # flash the Matrix
+pio test -e native                                        # run ControlProto unit tests
 ```
 
 ### Flashing workaround (Lolin32)
@@ -143,24 +159,100 @@ or manually in a serial monitor: `ssid <name>`, `pass <pw>`, `wifi-save`
 
 ### OTA updates
 
-After one USB flash + WiFi provisioning, update over the air:
+After one USB flash + WiFi provisioning, update over the air — no cable, no
+GPIO0 jumper:
 
 ```sh
-pio run -e lolin32-ota -t upload          # -> lasertag-lolin32.local
-pio run -e esp32-s3-matrix-ota -t upload  # -> lasertag-matrix.local
+pio run -e lolin32-ota -t upload          # -> 192.168.1.48 (lasertag-lolin32)
+pio run -e esp32-s3-matrix-ota -t upload  # -> 192.168.1.24 (lasertag-matrix)
 ```
 
-(Edit `upload_port` in `platformio.ini` to an IP if mDNS `.local` resolution
-isn't available on your network.)
+Both `*-ota` envs target the boards' **IP addresses** in `platformio.ini`,
+because mDNS (`lasertag-*.local`) does not resolve on every host (notably this
+Windows dev machine). Set a DHCP reservation, or update `upload_port` if an IP
+changes. OTA can take several minutes over a weak link (low RSSI), but is
+reliable.
 
 ### Telemetry monitoring
 
-Devices broadcast events (hits, transmits, state changes) as UDP lines on port
-4210. The `tools/TagMonitor` console app prints them:
+Devices broadcast discovery heartbeats and hit/state telemetry as UDP lines on
+port 4210 (see [Control plane](#control-plane-v2) for the grammar). The
+`tools/TagMonitor` console app prints them raw:
 
 ```sh
 dotnet run --project tools/TagMonitor
-# [14:02:11] 192.168.1.50   lasertag-matrix hit team=1(Blue) dmg=2
+# lasertag-matrix HB id=752b38 ip=192.168.1.24 fw=2.0.0 team=2 mode=idle hp=100 online=1
+# lasertag-matrix EVT hit victim=752b38 shooterTeam=2 dmg=2 proto=vatos hp=80 ts=12345
+```
+
+> **No telemetry but REST works?** That's a missing inbound firewall rule **or**
+> a lossy weak-RSSI link. Rule out the firewall with `tools/setup-firewall.ps1`
+> (Windows, self-elevating) / `tools/setup-firewall.sh` (Linux/macOS).
+
+---
+
+## Control plane (V2)
+
+A protocol- and mode-agnostic network layer for configuring, controlling, and
+monitoring devices. **REST** (reliable, JSON) handles config/CRUD/status; **UDP**
+(fast, fire-and-forget on port 4210) handles discovery, telemetry, and
+low-latency broadcast control. Devices decode IR into a generic `TagEvent`
+(behind an `IrProtocol` abstraction — Vatos is the first protocol) and teams are
+a generic indexed set, so game modes and the host never hard-code Vatos.
+
+The full design and the authoritative wire contract (with golden test vectors)
+live in
+[`docs/superpowers/specs/`](docs/superpowers/specs/2026-06-15-control-plane-contract.md).
+
+### REST API (served by the device)
+
+| Method | Route | Purpose |
+| ------ | ----- | ------- |
+| `GET` | `/api/status` | live runtime status (mode, hp, team, online, fw, uptime, rssi) |
+| `GET` | `/api/config` | persisted config (deviceId, ownTeam, enabledTeams, protocolId, brightness, teamColours) |
+| `PATCH` | `/api/config` | partial update; persists to NVS; unknown field → `400` |
+| `POST` | `/api/mode` | set runtime `activeMode` + timings (not persisted) |
+| `POST` | `/api/command` | one-shot actions: `identify`, `bright`, test `hit`, `debug` |
+
+Identity + preferences persist in NVS; game state (mode, timings, health) is
+runtime only, so a reboot returns the device to a neutral idle. **Write
+requests must send `Content-Type: application/json`** — the ESP32 `WebServer`
+discards a urlencoded body (curl's default); the .NET client sets the header
+automatically. (`GET /` and `GET /cmd?c=` remain as deprecated aliases.)
+
+### UDP line-protocol (port 4210)
+
+One message per packet; device→broadcast lines are prefixed with the hostname.
+
+```
+HB  id=752b38 ip=192.168.1.24 fw=2.0.0 team=2 mode=idle hp=100 online=1   # heartbeat (~2 s)
+EVT hit victim=752b38 shooterTeam=2 dmg=2 proto=vatos hp=80 ts=12345      # telemetry
+EVT state s=stunned hp=80 ts=12500                                        # ready|idle|stunned|dead|respawn
+CTL start ts=30000   |   CTL stop   |   CTL reset hp=100                  # host -> device control
+```
+
+`EVT`/`HB` come **from** the device; `CTL` is sent **to** devices. The device is
+authoritative for its own health; the host tallies match state from the event
+stream. Send `CTL` to the **subnet broadcast** (e.g. `192.168.1.255`) — the
+limited broadcast `255.255.255.255` is not delivered on this LAN.
+
+### .NET host library
+
+`dotnet/LaserTag.Client` (net10.0) is the typed host client:
+
+- `LaserTagClient` — REST client for `/api/*` (`GetStatusAsync`,
+  `PatchConfigAsync`, `SetModeAsync`, `SendCommandAsync`, …).
+- `UdpMessageParser` — parses `HB`/`EVT` lines into typed records; formats `CTL`.
+- `DeviceRoster` — live roster with liveness timeout (6 s) + rejoin detection.
+- `NetworkDiagnostics` — advisory firewall/port hints.
+
+`dotnet/openapi/lasertag.yaml` describes the REST surface (for generating other
+clients). `dotnet/LaserTag.Smoke` is a throwaway harness that exercises the
+library against a live device; run it for a quick end-to-end check:
+
+```sh
+dotnet test  dotnet/LaserTag.sln                              # unit tests
+dotnet run --project dotnet/LaserTag.Smoke -- 192.168.1.24 20 # live REST + UDP roster
 ```
 
 ---
@@ -316,33 +408,50 @@ A condensed log of the build, because most of the value was in the process:
 ## Repository layout
 
 ```
-platformio.ini            PlatformIO config (lolin32 / displaytest / matrix + OTA)
+platformio.ini            PlatformIO config (lolin32 / displaytest / matrix + OTA + native)
 src/
   main.cpp                Lolin32: RX + NEC/Vatos decode, OLED, IR transmit
-  matrix_main.cpp         ESP32-S3-Matrix: 8x8 LED target (rainbow/hit/dark)
+  matrix_main.cpp         ESP32-S3-Matrix: 8x8 LED target + V2 control plane
   display_test.cpp        OLED driver/geometry config finder (separate env)
 lib/
   Vatos/                  Platform-independent Vatos decode/encode
   IrFramer/               Shared IR edge-framing (ISR + frame assembly)
-  TagNet/                 Shared WiFi (serial creds) + OTA + UDP telemetry
+  TagNet/                 Shared WiFi (serial creds) + OTA + UDP + HTTP server
+  ControlProto/           Protocol-agnostic control-plane wire codec + TagEvent
+test/
+  test_controlproto/      Native (host-compiled) unit tests for ControlProto
+dotnet/                   .NET 10 host ecosystem (LaserTag.sln)
+  LaserTag.Client/        Typed REST + UDP client library (parser, roster, client)
+  LaserTag.Client.Tests/  xUnit tests
+  LaserTag.Smoke/         Throwaway live smoke harness
+  openapi/lasertag.yaml   OpenAPI description of the REST surface
 tools/
   IrSignalTrainer/        C# serial trainer + signature library
   TagMonitor/             C# UDP telemetry listener
   set-wifi.ps1            Provision WiFi credentials over serial
+  setup-firewall.ps1/.sh  Check/fix the host firewall for UDP 4210 telemetry
 docs/
   device-info.md          Lolin32 board pinout and OLED details
   sensor-comparison.md    KEYES comparator board vs VS1838B
   gun-protocol.md         The reverse-engineered Vatos IR protocol
+  superpowers/specs/      Control-plane design + authoritative wire contract
 signatures.json           Example trained signature library (TV remote + gun)
 ```
 
 ---
 
-## Future work
+The V2 **control plane** (REST + UDP config/control/telemetry, device-side
+health, the .NET client library) is in place. Next:
 
+- **Firmware game-mode framework + "Team Colours" mode** — pluggable modes on
+  top of the `activeMode`/timings plumbing already wired through the control
+  plane.
+- **Host scoring & orchestration** — tally match state from the `EVT` stream;
+  multi-device game start/stop via `CTL` broadcasts.
+- **.NET CLI + Claude skill** — a runnable CLI over `LaserTag.Client` (the
+  library exists; its `CTL` sender must target the subnet broadcast), wrapped as
+  a Claude skill.
 - **Real transmit range** — a transistor driver + series resistor on the IR LED
   for gameplay distances rather than bench loopback.
 - **Pin down the checksum formula** — currently a verified 4×4 lookup; the exact
   algorithm (symmetric in team+damage) is not yet derived.
-- **Game logic** — health/score tracking on the receiver using the decoded
-  team + damage; multi-board play using the transmitter.
