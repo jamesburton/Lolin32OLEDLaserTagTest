@@ -2,23 +2,31 @@
 // against a live device. Reads status+config over REST, then listens for UDP
 // heartbeats/telemetry and prints a live roster.
 //
-//   dotnet run --project dotnet/LaserTag.Smoke -- [ip] [seconds]
+//   dotnet run --project dotnet/LaserTag.Smoke -- [ip] [seconds] [--fix-firewall]
 //
-// Defaults: ip = 192.168.1.24, seconds = 20. Requires the V2 control-plane
-// firmware on the device (old firmware emits the legacy telemetry format and
-// has no /api/* routes).
+// Defaults: ip = 192.168.1.24, seconds = 20. --fix-firewall launches the
+// tools/setup-firewall script (which self-elevates) and exits. Requires the V2
+// control-plane firmware on the device.
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using LaserTag.Client;
 using LaserTag.Client.Models;
 
-string ip = args.Length > 0 ? args[0] : "192.168.1.24";
-int seconds = args.Length > 1 && int.TryParse(args[1], out int s) ? s : 20;
+var argList = args.ToList();
+bool fixFirewall = argList.Remove("--fix-firewall");
+string ip = argList.Count > 0 ? argList[0] : "192.168.1.24";
+int seconds = argList.Count > 1 && int.TryParse(argList[1], out int parsed) ? parsed : 20;
+
+if (fixFirewall)
+{
+    return LaunchFirewallSetup();
+}
 
 Console.WriteLine($"== LaserTag host smoke == device={ip} listen={seconds}s");
 
-// --- REST: read status + config -------------------------------------------
+// --- REST: read status + config --------------------------------------------
 using var http = new HttpClient
 {
     BaseAddress = new Uri($"http://{ip}"),
@@ -26,6 +34,7 @@ using var http = new HttpClient
 };
 var client = new LaserTagClient(http);
 
+bool restOk = false;
 try
 {
     StatusDoc status = await client.GetStatusAsync();
@@ -39,6 +48,7 @@ try
         $"CONFIG  ownTeam={cfg.OwnTeam} enabled=[{string.Join(",", cfg.EnabledTeams)}] " +
         $"proto={cfg.ProtocolId} brightness={cfg.Brightness} " +
         $"colours={{{string.Join(",", cfg.TeamColours.Select(kv => $"{kv.Key}:{kv.Value}"))}}}");
+    restOk = true;
 }
 catch (Exception ex)
 {
@@ -51,8 +61,8 @@ var roster = new DeviceRoster(() => DateTimeOffset.UtcNow);
 
 using var udp = new UdpClient();
 udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-udp.Client.Bind(new IPEndPoint(IPAddress.Any, 4210));
-Console.WriteLine($"Listening on :4210 ...");
+udp.Client.Bind(new IPEndPoint(IPAddress.Any, NetworkDiagnostics.TelemetryPort));
+Console.WriteLine($"Listening on :{NetworkDiagnostics.TelemetryPort} ...");
 
 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
 try
@@ -96,5 +106,34 @@ foreach (RosterEntry e in roster.GetAll())
 
 if (roster.GetAll().Count == 0)
 {
-    Console.WriteLine("  (no heartbeats seen — flash the V2 firmware, and check you are on the same subnet)");
+    // REST worked but no heartbeats => almost certainly an inbound firewall block.
+    Console.WriteLine(restOk
+        ? NetworkDiagnostics.NoHeartbeatHint() + Environment.NewLine +
+          "  (or run this harness with --fix-firewall to launch the setup script)"
+        : "  (no heartbeats and REST failed — is the device on and flashed with V2 firmware?)");
+}
+
+return 0;
+
+// Launch the platform firewall setup script (it self-elevates). Returns an exit code.
+int LaunchFirewallSetup()
+{
+    bool windows = NetworkDiagnostics.CurrentOS() == NetworkDiagnostics.OSKind.Windows;
+    string script = windows ? "tools/setup-firewall.ps1" : "tools/setup-firewall.sh";
+    if (!File.Exists(script))
+    {
+        Console.WriteLine($"Could not find {script} from the current directory ({Directory.GetCurrentDirectory()}).");
+        Console.WriteLine($"Run it from the repo root, or manually: {NetworkDiagnostics.FirewallFixCommand()}");
+        return 1;
+    }
+
+    var psi = windows
+        ? new ProcessStartInfo("powershell", $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"")
+        : new ProcessStartInfo("bash", $"\"{script}\"");
+    psi.UseShellExecute = false;
+
+    Console.WriteLine($"Launching {script} ...");
+    using Process? p = Process.Start(psi);
+    p?.WaitForExit();
+    return p?.ExitCode ?? 1;
 }
