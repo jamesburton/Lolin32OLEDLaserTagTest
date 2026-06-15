@@ -88,7 +88,7 @@ public static class NetworkDiagnostics
         string nl = Environment.NewLine;
         return
             $"REST reached the device but no UDP heartbeats arrived on port {TelemetryPort}." + nl +
-            "Two causes are common — rule each out:" + nl +
+            "Two causes are common - rule each out:" + nl +
             $"  - inbound firewall block on this host:  {FirewallFixCommand(os)}" + nl +
             "  - lossy Wi-Fi link (broadcast UDP drops at low RSSI): move closer to the AP, " +
             "or check the device's rssi via GET /api/status.";

@@ -14,7 +14,7 @@
   self-elevating through UAC. Idempotent and safe to re-run.
 
 .PARAMETER Check
-  Diagnose only — no prompts, no elevation. Exit 0 = configured, 1 = needs fixing.
+  Diagnose only - no prompts, no elevation. Exit 0 = configured, 1 = needs fixing.
 
 .PARAMETER Yes
   Apply without prompting (still self-elevates if needed).
@@ -120,4 +120,4 @@ if (-not $Yes) {
 }
 
 if (Test-Admin) { Add-Rule; Write-Host "[added]." }
-else { Invoke-Elevated '-Apply'; Write-Host "Launched elevated helper — accept the UAC prompt to finish." }
+else { Invoke-Elevated '-Apply'; Write-Host "Launched elevated helper - accept the UAC prompt to finish." }
