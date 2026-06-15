@@ -1,0 +1,62 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LaserTag.Client", "LaserTag.Client\LaserTag.Client.csproj", "{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LaserTag.Client.Tests", "LaserTag.Client.Tests\LaserTag.Client.Tests.csproj", "{DFC23290-6E46-4696-89F5-6C849F98F39E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LaserTag.Smoke", "LaserTag.Smoke\LaserTag.Smoke.csproj", "{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Debug|x64.Build.0 = Debug|Any CPU
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Debug|x86.Build.0 = Debug|Any CPU
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Release|Any CPU.Build.0 = Release|Any CPU
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Release|x64.ActiveCfg = Release|Any CPU
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Release|x64.Build.0 = Release|Any CPU
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Release|x86.ActiveCfg = Release|Any CPU
+		{44B8285B-9D6F-4EA6-B3B8-D92DB5A9A088}.Release|x86.Build.0 = Release|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Debug|x64.Build.0 = Debug|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Debug|x86.Build.0 = Debug|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Release|x64.ActiveCfg = Release|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Release|x64.Build.0 = Release|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Release|x86.ActiveCfg = Release|Any CPU
+		{DFC23290-6E46-4696-89F5-6C849F98F39E}.Release|x86.Build.0 = Release|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Debug|x64.Build.0 = Debug|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Debug|x86.Build.0 = Debug|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Release|x64.ActiveCfg = Release|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Release|x64.Build.0 = Release|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Release|x86.ActiveCfg = Release|Any CPU
+		{F5DFB23B-8BC7-4AB2-B2AE-A0926857B9AA}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,392 @@
+openapi: 3.0.3
+info:
+  title: Laser-Tag Device Control-Plane REST API
+  version: "2.0.0"
+  description: >
+    REST surface served by each laser-tag device (ESP32 + TagNet). Covers live
+    status, persisted config CRUD, runtime mode selection, and one-shot
+    commands. This document describes the REST contract ONLY; the UDP
+    line-protocol (heartbeat / telemetry / control) is documented separately in
+    the wire contract and cannot be expressed in OpenAPI. Authoritative source:
+    docs/superpowers/specs/2026-06-15-control-plane-contract.md (§2).
+servers:
+  - url: http://{host}
+    description: A single device, addressed by hostname or IP.
+    variables:
+      host:
+        default: lasertag-matrix
+        description: Device hostname (mDNS .local where it resolves) or IP address.
+tags:
+  - name: status
+    description: Live runtime status.
+  - name: config
+    description: Persisted (NVS) configuration.
+  - name: runtime
+    description: Non-persisted runtime control (mode, commands).
+paths:
+  /api/status:
+    get:
+      tags: [status]
+      summary: Get live runtime status.
+      operationId: getStatus
+      responses:
+        "200":
+          description: Current runtime status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusDoc"
+              example:
+                deviceId: a1b2c3
+                hostname: lasertag-matrix
+                fw: "2.0.0"
+                mode: team-colours
+                ownTeam: 2
+                hp: 100
+                online: true
+                uptimeMs: 123456
+                rssi: -67
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+  /api/config:
+    get:
+      tags: [config]
+      summary: Get the full persisted configuration.
+      operationId: getConfig
+      responses:
+        "200":
+          description: The full persisted (NVS) configuration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigDoc"
+              example:
+                deviceId: a1b2c3
+                hostname: lasertag-matrix
+                ownTeam: 2
+                enabledTeams: [1, 2, 3, 4]
+                protocolId: vatos
+                brightness: 13
+                teamColours:
+                  "1": "#0000FF"
+                  "2": "#FF0000"
+                  "3": "#00FF00"
+                  "4": "#FFFFFF"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+    patch:
+      tags: [config]
+      summary: Partially update the persisted configuration.
+      description: >
+        Applies only the provided keys and persists the changed NVS fields.
+        Unknown fields are rejected with 400. Returns the full resulting
+        ConfigDoc. An NVS write failure returns 500 with config unchanged.
+      operationId: patchConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigPatch"
+            examples:
+              changeTeamAndBrightness:
+                summary: Change ownTeam and brightness.
+                value:
+                  ownTeam: 3
+                  brightness: 20
+              unknownField:
+                summary: Unknown field (rejected 400).
+                value:
+                  foo: 1
+      responses:
+        "200":
+          description: The full configuration after applying the patch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigDoc"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/mode:
+    post:
+      tags: [runtime]
+      summary: Set the runtime mode and timings (not persisted).
+      operationId: setMode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModeDoc"
+            example:
+              mode: team-colours
+              timings:
+                darkMinMs: 5000
+                darkMaxMs: 15000
+      responses:
+        "200":
+          description: The mode document, echoed back (not persisted).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModeDoc"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+  /api/command:
+    post:
+      tags: [runtime]
+      summary: Send a structured one-shot command.
+      operationId: sendCommand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandDoc"
+            examples:
+              identify:
+                value:
+                  cmd: identify
+              bright:
+                value:
+                  cmd: bright
+                  value: 20
+              hit:
+                value:
+                  cmd: hit
+                  team: 2
+                  damage: 2
+              debug:
+                value:
+                  cmd: debug
+                  value: 1
+      responses:
+        "200":
+          description: Command accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandAck"
+              example:
+                ok: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+components:
+  responses:
+    BadRequest:
+      description: Malformed body or unknown field.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDoc"
+          example:
+            error: "unknown field: foo"
+    NotFound:
+      description: Unknown route.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDoc"
+    MethodNotAllowed:
+      description: Wrong HTTP method for this route.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDoc"
+    ServerError:
+      description: NVS write failure; configuration is unchanged.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorDoc"
+  schemas:
+    StatusDoc:
+      type: object
+      required:
+        - deviceId
+        - hostname
+        - fw
+        - mode
+        - ownTeam
+        - hp
+        - online
+        - uptimeMs
+        - rssi
+      properties:
+        deviceId:
+          type: string
+          description: Stable, MAC-derived device id (lowercase hex, 6 chars).
+          example: a1b2c3
+        hostname:
+          type: string
+          example: lasertag-matrix
+        fw:
+          type: string
+          description: Firmware version (semver).
+          example: "2.0.0"
+        mode:
+          type: string
+          description: Active mode id.
+          example: team-colours
+        ownTeam:
+          type: integer
+          description: The device's own team index (0..N).
+          example: 2
+        hp:
+          type: integer
+          description: Current health (0..100).
+          example: 100
+        online:
+          type: boolean
+          example: true
+        uptimeMs:
+          type: integer
+          format: int64
+          description: Device uptime in milliseconds.
+          example: 123456
+        rssi:
+          type: integer
+          description: Current WiFi RSSI in dBm.
+          example: -67
+    ConfigDoc:
+      type: object
+      required:
+        - deviceId
+        - hostname
+        - ownTeam
+        - enabledTeams
+        - protocolId
+        - brightness
+        - teamColours
+      properties:
+        deviceId:
+          type: string
+          example: a1b2c3
+        hostname:
+          type: string
+          example: lasertag-matrix
+        ownTeam:
+          type: integer
+          example: 2
+        enabledTeams:
+          type: array
+          description: Active subset of team indices.
+          items:
+            type: integer
+          example: [1, 2, 3, 4]
+        protocolId:
+          type: string
+          example: vatos
+        brightness:
+          type: integer
+          description: LED brightness.
+          example: 13
+        teamColours:
+          type: object
+          description: >
+            Team colour override map. Keys are team indices as JSON strings;
+            values are #RRGGBB hex colours.
+          additionalProperties:
+            type: string
+            pattern: "^#[0-9A-Fa-f]{6}$"
+          example:
+            "1": "#0000FF"
+            "2": "#FF0000"
+            "3": "#00FF00"
+            "4": "#FFFFFF"
+    ConfigPatch:
+      type: object
+      description: >
+        Partial ConfigDoc. Only the provided persisted fields are changed.
+        deviceId is read-only and not patchable. Unknown fields are rejected 400.
+      additionalProperties: true
+      properties:
+        hostname:
+          type: string
+        ownTeam:
+          type: integer
+        enabledTeams:
+          type: array
+          items:
+            type: integer
+        protocolId:
+          type: string
+        brightness:
+          type: integer
+        teamColours:
+          type: object
+          additionalProperties:
+            type: string
+            pattern: "^#[0-9A-Fa-f]{6}$"
+    ModeTimings:
+      type: object
+      description: Mode timing parameters; only provided keys are sent.
+      properties:
+        darkMinMs:
+          type: integer
+          example: 5000
+        darkMaxMs:
+          type: integer
+          example: 15000
+    ModeDoc:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          example: team-colours
+        timings:
+          $ref: "#/components/schemas/ModeTimings"
+    CommandDoc:
+      type: object
+      required:
+        - cmd
+      properties:
+        cmd:
+          type: string
+          description: Command name.
+          enum: [identify, bright, hit, debug]
+        value:
+          type: integer
+          description: Scalar value (e.g. for bright, debug).
+        team:
+          type: integer
+          description: Team index (e.g. for a test hit).
+        damage:
+          type: integer
+          description: Damage value (e.g. for a test hit).
+    CommandAck:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          example: true
+    ErrorDoc:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: "unknown field: foo"

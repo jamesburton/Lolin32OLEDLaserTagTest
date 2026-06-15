@@ -1,0 +1,10 @@
+{
+  "name": "ControlProto",
+  "version": "1.0.0",
+  "description": "Pure, Arduino-free control-plane line-protocol and REST JSON helpers for the laser-tag platform.",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {
+    "bblanchon/ArduinoJson": "^7"
+  }
+}

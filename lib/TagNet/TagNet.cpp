@@ -20,8 +20,13 @@ WebServer server(80);
 bool isOnline = false;
 bool servicesStarted = false;
 char deviceName[32] = "tag";
+char devId[8] = "000000"; // lower 3 bytes of WiFi MAC, lowercase hex
 LineHandler lineHandler = nullptr;
 StatusProvider statusProvider = nullptr;
+HttpSetup httpSetup = nullptr;
+
+// Inbound UDP packet assembly (CTL control lines arrive here)
+char udpBuf[160];
 
 // Serial line assembly
 char lineBuf[160];
@@ -74,9 +79,31 @@ void startServices() {
     runCommand(c.c_str());
     server.send(200, "text/plain", "OK: " + c + "\n");
   });
+
+  // Let the app register its own routes (e.g. the /api/* REST surface) before
+  // the server starts listening.
+  if (httpSetup) {
+    httpSetup();
+  }
   server.begin();
 
   servicesStarted = true;
+}
+
+// Drain any inbound UDP packets, feeding each through the same line parser as
+// serial. This is how host-broadcast control lines (e.g. `CTL start`) reach the
+// app's onLine handler. Our own and peers' hostname-prefixed HB/EVT broadcasts
+// also arrive here; they simply don't match any command and drop cleanly.
+void pumpUdp() {
+  int size;
+  while ((size = udp.parsePacket()) > 0) {
+    int n = udp.read(udpBuf, sizeof(udpBuf) - 1);
+    if (n <= 0) {
+      continue;
+    }
+    udpBuf[n] = '\0';
+    processLine(udpBuf);
+  }
 }
 
 // Connect using the given credentials, blocking up to ConnectTimeoutMs.
@@ -197,6 +224,12 @@ void begin(const char *hostname) {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(hostname);
 
+  // deviceId = lower 3 bytes of the WiFi MAC, lowercase hex, 6 chars. Stable
+  // across reboots; used as the wire `id` / `deviceId`.
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  snprintf(devId, sizeof(devId), "%02x%02x%02x", mac[3], mac[4], mac[5]);
+
   prefs.begin("tagnet", false);
   const String ssid = prefs.getString("ssid", "");
   const String pass = prefs.getString("pass", "");
@@ -212,6 +245,7 @@ void handle() {
   if (isOnline) {
     ArduinoOTA.handle();
     server.handleClient();
+    pumpUdp();
   }
   pumpSerial();
 }
@@ -219,6 +253,20 @@ void handle() {
 void onLine(LineHandler handler) { lineHandler = handler; }
 
 void onStatus(StatusProvider provider) { statusProvider = provider; }
+
+void onHttpSetup(HttpSetup setup) {
+  httpSetup = setup;
+  // If services are already up, run it now so late registration still works.
+  if (servicesStarted && setup) {
+    setup();
+  }
+}
+
+WebServer &httpServer() { return server; }
+
+const char *deviceId() { return devId; }
+
+const char *hostname() { return deviceName; }
 
 void event(const char *line) {
   Serial.print(deviceName);

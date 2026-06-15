@@ -58,7 +58,7 @@
 | `shooterTeam` | int | firing team index |
 | `dmg` | int | damage 1..4 |
 | `proto` | string | protocolId that decoded the shot, e.g. `vatos` |
-| `s` | string | state value: one of `ready`, `idle`, `dead`, `respawn` |
+| `s` | string | state value: one of `ready`, `idle`, `stunned`, `dead`, `respawn`. `stunned` = transient post-hit cooldown while still alive (hp>0); `dead` = health depleted (hp==0), held until respawn/reset |
 | `ts` | uint (ms) | device `millis()` timestamp |
 
 ### 1.4 Message grammar
@@ -66,7 +66,7 @@
 ```
 HB  id=<hex> ip=<ip> fw=<semver> team=<int> mode=<str> hp=<int> online=1
 EVT hit victim=<hex> shooterTeam=<int> dmg=<int> proto=<str> hp=<int> ts=<ms>
-EVT state s=<ready|idle|dead|respawn> [hp=<int>] ts=<ms>
+EVT state s=<ready|idle|stunned|dead|respawn> [hp=<int>] ts=<ms>
 CTL start [ts=<ms>]
 CTL stop
 CTL reset [hp=<int>]
@@ -95,6 +95,12 @@ Garbage/partial lines that MUST parse to "drop, no throw":
 ## 2. REST contract (JSON over HTTP, served by the device)
 
 - Content-Type `application/json`. Bodies are UTF-8 JSON objects.
+- **Write requests (`PATCH`/`POST`) MUST send a JSON (or other non-form)
+  `Content-Type`.** The device's ESP32 `WebServer` only exposes a request body
+  for non-form content types; an `application/x-www-form-urlencoded` body (the
+  default of `curl -d`) is discarded, yielding `400 {"error":"empty body —
+  send Content-Type: application/json"}`. The .NET client sets the header
+  automatically; with raw `curl` pass `-H "Content-Type: application/json"`.
 - `PATCH /api/config` applies only the provided keys; unknown keys → `400`.
 - Status codes: `200` success, `400` malformed/unknown field, `404` unknown
   route, `405` wrong method, `500` NVS write failure (config unchanged).

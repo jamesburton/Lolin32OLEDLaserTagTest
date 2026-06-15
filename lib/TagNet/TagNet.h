@@ -22,6 +22,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <WebServer.h>
 #include <stdint.h>
 
 namespace TagNet {
@@ -29,11 +30,20 @@ namespace TagNet {
 /// UDP port that telemetry is broadcast to (the PC listener binds here).
 constexpr uint16_t UdpPort = 4210;
 
-/// Handler for command lines (from serial, UDP, or HTTP) that aren't WiFi commands.
+/// Handler for command lines (from serial, inbound UDP, or HTTP) that aren't
+/// WiFi commands. Inbound UDP on UdpPort is pumped through here too, so
+/// host-broadcast control lines (e.g. `CTL start`) reach the app.
 typedef void (*LineHandler)(const char *line);
 
 /// Provides app-specific status text for the HTTP "/" page.
 typedef String (*StatusProvider)();
+
+/// <summary>
+/// Hook invoked once, during service startup, after the built-in routes are
+/// registered but before the server begins listening. The app registers its
+/// own HTTP routes here via httpServer(). Called only when WiFi connects.
+/// </summary>
+typedef void (*HttpSetup)();
 
 /// <summary>
 /// Loads stored WiFi credentials and connects (if any), then starts OTA and the
@@ -53,6 +63,35 @@ void onLine(LineHandler handler);
 /// <summary>Registers an app status provider shown on the HTTP "/" page.</summary>
 /// <param name="provider">Callback returning status text, or nullptr to clear.</param>
 void onStatus(StatusProvider provider);
+
+/// <summary>
+/// Registers a hook that adds app HTTP routes during service startup. The hook
+/// runs after the built-in routes and before the server starts; use
+/// httpServer() inside it to register routes. If services are already running
+/// (rare), the hook is invoked immediately.
+/// </summary>
+/// <param name="setup">Callback that registers routes, or nullptr to clear.</param>
+void onHttpSetup(HttpSetup setup);
+
+/// <summary>
+/// The shared HTTP server, for registering app routes from an onHttpSetup hook
+/// (e.g. the `/api/*` REST surface). Routes should be added before the server
+/// starts; the onHttpSetup hook fires at the correct time.
+/// </summary>
+/// <returns>Reference to the WebServer instance.</returns>
+WebServer &httpServer();
+
+/// <summary>
+/// The device id: the lower 3 bytes of the WiFi MAC as 6-char lowercase hex
+/// (e.g. "a1b2c3"). Stable across reboots, used as the wire `id` / `deviceId`.
+/// Valid after begin().
+/// </summary>
+/// <returns>NUL-terminated 6-char lowercase hex string.</returns>
+const char *deviceId();
+
+/// <summary>The device/OTA hostname passed to begin().</summary>
+/// <returns>NUL-terminated hostname.</returns>
+const char *hostname();
 
 /// <summary>Sends a telemetry line (Serial + broadcast UDP if online).</summary>
 /// <param name="line">The event text.</param>
