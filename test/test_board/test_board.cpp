@@ -46,6 +46,36 @@ void test_parse_hex_colour_rejects_malformed() {
   TEST_ASSERT_FALSE(parseHexColour("", c));
 }
 
+// --- applyOverride -----------------------------------------------------------
+
+void test_override_valid_matrix_pin() {
+  BoardProfile p = active();
+  TEST_ASSERT_TRUE(applyOverride(p, "matrixPin", 27));
+  TEST_ASSERT_EQUAL_INT8(27, p.matrixPin);
+}
+
+void test_override_unknown_key_ignored() {
+  BoardProfile p = active();
+  int8_t before = p.matrixPin;
+  TEST_ASSERT_FALSE(applyOverride(p, "nope", 5));
+  TEST_ASSERT_EQUAL_INT8(before, p.matrixPin);
+}
+
+void test_override_out_of_range_pin_ignored() {
+  BoardProfile p = active();
+  int8_t before = p.matrixPin;
+  TEST_ASSERT_FALSE(applyOverride(p, "matrixPin", 999));
+  TEST_ASSERT_EQUAL_INT8(before, p.matrixPin); // safe fallback: unchanged
+}
+
+void test_override_matrix_order() {
+  BoardProfile p = active();
+  TEST_ASSERT_TRUE(applyOverride(p, "matrixOrder", 1));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(ColourOrder::Rgb),
+                        static_cast<int>(p.matrixOrder));
+  TEST_ASSERT_FALSE(applyOverride(p, "matrixOrder", 5)); // out of range
+}
+
 // --- main ---------------------------------------------------------------------
 
 int main(int, char **) {
@@ -54,5 +84,9 @@ int main(int, char **) {
   RUN_TEST(test_parse_hex_colour_with_hash);
   RUN_TEST(test_parse_hex_colour_without_hash);
   RUN_TEST(test_parse_hex_colour_rejects_malformed);
+  RUN_TEST(test_override_valid_matrix_pin);
+  RUN_TEST(test_override_unknown_key_ignored);
+  RUN_TEST(test_override_out_of_range_pin_ignored);
+  RUN_TEST(test_override_matrix_order);
   return UNITY_END();
 }
