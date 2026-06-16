@@ -21,6 +21,12 @@
 #include <driver/adc.h>
 #include <driver/gpio.h>
 #include <driver/i2s.h>
+#include <BoardProfile.h>
+#include <IrTx.h>
+#include <HitDisplay.h>
+#include <Sound.h>
+#include <BoardNvs.h>
+#include <ControlProto.h>
 
 // Display driver selection: some Lolin32 OLED clones ship with an SH1106
 // controller instead of the SSD1306, which makes SSD1306 output scrambled.
@@ -51,10 +57,6 @@
 // Activity LED: pulses each time a frame is received. Active-high, GPIO26.
 #define LED_PIN 26
 constexpr uint32_t LED_PULSE_MS = 80;
-
-// IR transmit LED on GPIO13, driven as a 38 kHz carrier via LEDC.
-#define IR_TX_PIN 13
-#define IR_TX_LEDC_CHANNEL 0
 
 // BOOT button (GPIO0): press to transmit a test shot (cycles team/damage).
 #define BOOT_PIN 0
@@ -261,53 +263,21 @@ bool measureCarrier() {
   return true;
 }
 
-// 38 kHz carrier control on the IR TX pin. The LEDC API changed in Arduino-
-// ESP32 core 3.x (pin-addressed) from 2.x (channel-addressed).
-#if ESP_ARDUINO_VERSION_MAJOR >= 3
-#define CARRIER_BEGIN() ledcAttach(IR_TX_PIN, Vatos::CarrierHz, 8)
-#define CARRIER_ON() ledcWrite(IR_TX_PIN, 128) // 50% duty
-#define CARRIER_OFF() ledcWrite(IR_TX_PIN, 0)
-#else
-#define CARRIER_BEGIN()                                                        \
-  ledcSetup(IR_TX_LEDC_CHANNEL, Vatos::CarrierHz, 8);                          \
-  ledcAttachPin(IR_TX_PIN, IR_TX_LEDC_CHANNEL)
-#define CARRIER_ON() ledcWrite(IR_TX_LEDC_CHANNEL, 128)
-#define CARRIER_OFF() ledcWrite(IR_TX_LEDC_CHANNEL, 0)
-#endif
-
-// Transmit a Vatos shot by gating the 38 kHz carrier per encoded symbol.
-// Even symbols are IR bursts (carrier on), odd are gaps (carrier off).
-void vatosSend(const Vatos::Shot &shot) {
-  bool bits[Vatos::FrameEdges];
-  if (!Vatos::encode(shot, bits)) {
-    return;
-  }
-  for (size_t i = 0; i < Vatos::FrameEdges; i++) {
-    const uint32_t durUs = bits[i] ? Vatos::LongUs : Vatos::ShortUs;
-    if ((i & 1) == 0) {
-      CARRIER_ON();
-      delayMicroseconds(durUs);
-      CARRIER_OFF();
-    } else {
-      delayMicroseconds(durUs);
-    }
-  }
-  CARRIER_OFF();
-}
-
 // Transmit the next test shot, cycling through all 16 team/damage codes.
 void sendNextTestShot() {
   static uint8_t txIndex = 0;
-  const Vatos::Shot shot = {static_cast<uint8_t>(txIndex / 4 + 1),
-                            static_cast<uint8_t>(txIndex % 4 + 1)};
+  ControlProto::TagEvent ev =
+      ControlProto::tagEventFromVatosShot(txIndex / 4 + 1, txIndex % 4 + 1);
   txIndex = (txIndex + 1) % 16;
-  vatosSend(shot);
-  TagNet::eventf("tx team=%u(%s) dmg=%u", shot.team, Vatos::teamName(shot.team),
-                 shot.damage);
+  IrTx::fire(ev);
+  TagNet::eventf("tx team=%d dmg=%d", ev.team, ev.damage);
 }
 
-// Any serial line that isn't a WiFi command transmits a test shot.
-void onSerialLine(const char * /*line*/) { sendNextTestShot(); }
+// Any serial line that isn't a WiFi/cfg command transmits a test shot.
+void onSerialLine(const char *line) {
+  if (BoardNvs::handleCfgLine(line)) return;
+  sendNextTestShot();
+}
 
 void setup() {
   Serial.begin(115200);
@@ -334,10 +304,14 @@ void setup() {
   gpio_set_drive_capability(static_cast<gpio_num_t>(LED_PIN), GPIO_DRIVE_CAP_0);
   digitalWrite(LED_PIN, LOW);
 
-  // IR transmit LED via LEDC carrier (min drive strength, resistor-less).
-  CARRIER_BEGIN();
-  gpio_set_drive_capability(static_cast<gpio_num_t>(IR_TX_PIN), GPIO_DRIVE_CAP_0);
-  CARRIER_OFF();
+  // Board HAL init: load NVS overrides onto the profile, then start IR TX,
+  // hit-display panel, and audio. LED_PIN (26) == profile.activityLedPin, so
+  // the activity LED setup above is unchanged.
+  Board::BoardProfile profile = Board::active();
+  BoardNvs::loadOverrides(profile);
+  IrTx::begin(profile);
+  HitDisplay::begin(profile, nullptr); // panel idle rainbow; no team-colour table needed
+  Sound::begin(profile);
 
   pinMode(BOOT_PIN, INPUT_PULLUP);
 
@@ -351,7 +325,7 @@ void setup() {
   Serial.print(F("IR monitor running (RX GPIO "));
   Serial.print(IR_PIN);
   Serial.print(F(", TX GPIO "));
-  Serial.print(IR_TX_PIN);
+  Serial.print(profile.irTxPin);
   Serial.println(F("); BOOT button or any serial line transmits a test shot"));
 
   display.clearDisplay();
@@ -385,6 +359,10 @@ void loop() {
 
   // OTA + serial commands (WiFi provisioning, and serial-triggered shots)
   TagNet::handle();
+
+  // Throttled panel-idle tick (rainbow animation at ~50 fps)
+  static uint32_t lastIdleMs = 0;
+  if (millis() - lastIdleMs >= 20) { lastIdleMs = millis(); HitDisplay::idle(); }
 
 #if ENABLE_CARRIER_SAMPLER
   if (digitalRead(IR_PIN) && millis() - lastCarrierAttemptMs > 300) {
