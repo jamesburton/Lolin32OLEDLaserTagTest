@@ -18,6 +18,10 @@ typedef const char *(*TeamColourFn)(int team);
 void begin(const Board::BoardProfile &p, TeamColourFn colours);
 
 void idle();              // matrix: flowing rainbow; RGB LED: off
+/// Like idle(), but the matrix's central 4 columns act as a health bar: only
+/// round(hp/maxHp * (4*H)) of those central cells stay lit (rainbow), the rest
+/// go dark, draining from the top. Falls back to idle() for non-matrix displays.
+void idleWithHealth(int hp, int maxHp);
 void flashTeam(int team); // solid-fill the team colour (one frame)
 void solid(Board::Rgb c);
 void dark();

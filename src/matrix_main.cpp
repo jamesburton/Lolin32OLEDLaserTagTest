@@ -59,7 +59,7 @@ constexpr uint32_t DefaultDarkMaxMs = 5000;
 constexpr uint32_t HeartbeatMs = 2000;
 
 // Damage taken per hit when the shot doesn't carry usable damage.
-constexpr int StartHp = 100;
+constexpr int StartHp = 32;
 
 // Visual state machine (drives the LEDs).
 enum class Vis { Rainbow, Flash, Dark, Dead };
@@ -573,7 +573,7 @@ void loop() {
       static uint32_t lastFrameMs = 0;
       if (now - lastFrameMs >= 20) {
         lastFrameMs = now;
-        HitDisplay::idle();
+        HitDisplay::idleWithHealth(hp, StartHp);
       }
     }
     break;
