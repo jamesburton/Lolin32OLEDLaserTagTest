@@ -21,10 +21,14 @@
  */
 
 #include <Arduino.h>
-#include <FastLED.h>
 #include <Preferences.h>
 #include <WiFi.h>
 #include <driver/gpio.h>
+
+#include <BoardProfile.h>
+#include <BoardNvs.h>
+#include <HitDisplay.h>
+#include <Sound.h>
 
 #include <ControlProto.h>
 #include <IrFramer.h>
@@ -35,10 +39,6 @@ namespace cp = ControlProto;
 
 // Firmware version reported on the wire (contract §1.3 fw=).
 static const char *kFirmwareVersion = "2.0.0";
-
-// On-board 8x8 WS2812 matrix data pin
-#define MATRIX_PIN 14
-#define NUM_LEDS 64
 
 // IR receiver output (free header pin; GPIO10-14 are taken by IMU/matrix)
 #define IR_PIN 1
@@ -61,8 +61,6 @@ constexpr uint32_t HeartbeatMs = 2000;
 // Damage taken per hit when the shot doesn't carry usable damage.
 constexpr int StartHp = 100;
 
-CRGB leds[NUM_LEDS];
-
 // Visual state machine (drives the LEDs).
 enum class Vis { Rainbow, Flash, Dark, Dead };
 Vis vis = Vis::Rainbow;
@@ -78,8 +76,7 @@ uint32_t darkMaxMs = DefaultDarkMaxMs;
 // Device-authoritative runtime health (design §6).
 int hp = StartHp;
 
-uint8_t rainbowHue = 0;
-CRGB hitColour = CRGB::White;
+int hitTeam = 0;
 uint8_t flashesLeft = 0;
 bool flashOn = false;
 uint32_t nextEventMs = 0; // next flash toggle, or end of the dark period
@@ -163,20 +160,13 @@ void loadConfig() {
 
 // --- LEDs -------------------------------------------------------------------
 
-// Map a team index to its configured colour (parsed from "#RRGGBB").
-CRGB teamColour(int team) {
+// Adapter passed to HitDisplay::begin; returns the configured "#RRGGBB" for a
+// team index using the persisted teamIndex[]/teamColour[] config arrays.
+static const char *teamColourHex(int team) {
   for (size_t i = 0; i < cp::TeamColourCount; i++) {
-    if (config.teamIndex[i] == team) {
-      long v = strtol(config.teamColour[i] + 1, nullptr, 16); // skip '#'
-      return CRGB((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF);
-    }
+    if (config.teamIndex[i] == team) return config.teamColour[i];
   }
-  return CRGB::Magenta; // unknown team
-}
-
-void showSolid(const CRGB &colour) {
-  fill_solid(leds, NUM_LEDS, colour);
-  FastLED.show();
+  return "#FF00FF";
 }
 
 // --- Telemetry helpers ------------------------------------------------------
@@ -205,17 +195,19 @@ void applyHit(const cp::TagEvent &ev) {
                      ev.protocolId, hp, millis());
   TagNet::event(buf);
 
-  hitColour = teamColour(ev.team);
+  Sound::cue(Sound::Cue::Hit);
+  hitTeam = ev.team;
   if (hp == 0) {
     // Dead: hold dark until respawn / CTL reset.
+    Sound::cue(Sound::Cue::Dead);
     vis = Vis::Dead;
-    showSolid(CRGB::Black);
+    HitDisplay::dark();
     emitState("dead", -1);
   } else {
     flashesLeft = FlashCount;
     flashOn = true;
     vis = Vis::Flash;
-    showSolid(hitColour);
+    HitDisplay::flashTeam(hitTeam);
     nextEventMs = millis() + FlashOnMs;
   }
 }
@@ -229,6 +221,7 @@ void handleControl(const cp::Control &c) {
     // Arm for play: full health, idling ready.
     hp = StartHp;
     vis = Vis::Rainbow;
+    Sound::cue(Sound::Cue::Start);
     emitState("ready", hp);
     break;
   case cp::ControlKind::Stop:
@@ -242,11 +235,13 @@ void handleControl(const cp::Control &c) {
     if (c.hasHp && c.hp <= 0) {
       hp = 0;
       vis = Vis::Dead;
-      showSolid(CRGB::Black);
+      Sound::cue(Sound::Cue::Dead);
+      HitDisplay::dark();
       emitState("dead", -1);
     } else {
       hp = c.hasHp ? c.hp : StartHp;
       vis = Vis::Rainbow;
+      Sound::cue(Sound::Cue::Respawn);
       emitState("respawn", hp);
     }
     break;
@@ -261,12 +256,11 @@ bool runCommand(const cp::CommandDoc &cmd) {
   switch (cmd.kind) {
   case cp::CommandKind::Identify:
     identifyUntilMs = millis() + 1500;
-    showSolid(CRGB::White);
+    HitDisplay::solid({255, 255, 255});
     return true;
   case cp::CommandKind::Bright:
     config.brightness = constrain(cmd.value, 0, 255);
-    FastLED.setBrightness(config.brightness);
-    FastLED.show();
+    HitDisplay::setBrightness(config.brightness);
     return true;
   case cp::CommandKind::Hit:
     // Test hit without the gun.
@@ -298,8 +292,7 @@ void onLine(const char *line) {
   // Legacy serial verbs (deprecated; kept for bench use without the host).
   if (strncmp(line, "bright ", 7) == 0) {
     config.brightness = (uint8_t)constrain(atoi(line + 7), 0, 255);
-    FastLED.setBrightness(config.brightness);
-    FastLED.show();
+    HitDisplay::setBrightness(config.brightness);
     Serial.printf("brightness=%u\n", config.brightness);
   } else if (strncmp(line, "hit ", 4) == 0) {
     int t = 0, d = 0;
@@ -400,7 +393,7 @@ void handleConfig() {
       sendJson(500, "{\"error\":\"nvs write failed\"}");
       return;
     }
-    FastLED.setBrightness(config.brightness);
+    HitDisplay::setBrightness(config.brightness);
     char buf[512];
     cp::serializeConfig(config, buf, sizeof(buf));
     sendJson(200, buf);
@@ -480,10 +473,11 @@ void registerRoutes() {
 void setup() {
   Serial.begin(115200);
 
-  // This matrix is RGB-ordered (not the usual GRB) — with GRB, Red showed green.
-  FastLED.addLeds<WS2812B, MATRIX_PIN, RGB>(leds, NUM_LEDS);
-  FastLED.setMaxPowerInVoltsAndMilliamps(5, 500); // keep within USB current
-  showSolid(CRGB(0, 0, 8)); // dim blue: starting / WiFi config
+  Board::BoardProfile profile = Board::active();
+  BoardNvs::loadOverrides(profile);
+  HitDisplay::begin(profile, teamColourHex);
+  Sound::begin(profile);
+  HitDisplay::solid({0, 0, 8}); // dim blue: starting / WiFi config
 
   // Resistor-less activity LED: minimum drive strength protects the pin
   pinMode(ACT_LED_PIN, OUTPUT);
@@ -495,7 +489,7 @@ void setup() {
 
   nvs.begin("matrix", false);
   loadConfig();
-  FastLED.setBrightness(config.brightness);
+  HitDisplay::setBrightness(config.brightness);
 
   TagNet::onLine(onLine);             // CTL + legacy bright/hit/debug
   TagNet::onStatus(matrixStatus);     // HTTP "/" status
@@ -579,8 +573,7 @@ void loop() {
       static uint32_t lastFrameMs = 0;
       if (now - lastFrameMs >= 20) {
         lastFrameMs = now;
-        fill_rainbow(leds, NUM_LEDS, rainbowHue++, 4);
-        FastLED.show();
+        HitDisplay::idle();
       }
     }
     break;
@@ -589,10 +582,10 @@ void loop() {
     if (now >= nextEventMs) {
       flashOn = !flashOn;
       if (flashOn) {
-        showSolid(hitColour);
+        HitDisplay::flashTeam(hitTeam);
         nextEventMs = now + FlashOnMs;
       } else {
-        showSolid(CRGB::Black);
+        HitDisplay::dark();
         nextEventMs = now + FlashOffMs;
         if (--flashesLeft == 0) {
           vis = Vis::Dark;
