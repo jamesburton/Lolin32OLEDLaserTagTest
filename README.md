@@ -79,9 +79,11 @@ codec for the control plane).
 | (reserved) | GPIO10–13 | on-board QMI8658 IMU |
 
 Behaviour: rainbow when idle → on a Vatos hit, subtract the shot's damage from
-its health, flash the firing team's colour (Blue/Red/Green/White) 4×, then go
-dark for a brief configurable "stunned" interval (default ~1–5 s; tune via the
-control plane) → resume rainbow, keeping accumulated damage. At **0 health** it
+its health (**max health 32**), flash the firing team's colour (Blue/Red/Green/White)
+4×, then go dark for a brief configurable "stunned" interval (default ~1–5 s;
+tune via the control plane) → resume rainbow, keeping accumulated damage. The
+**4 central columns** of the 8×8 matrix form a **health bar**: they deplete
+top-down as health drops (outer 4 columns stay rainbow). At **0 health** it
 holds dark ("dead") until a respawn / reset. The device is **authoritative for
 its own health** and emits `EVT hit` / `EVT state` telemetry as it changes (see
 [Control plane](#control-plane-v2)). Matrix current is capped to 500 mA
@@ -156,6 +158,18 @@ Credentials are stored in NVS, set with serial commands (no rebuild):
 
 or manually in a serial monitor: `ssid <name>`, `pass <pw>`, `wifi-save`
 (also `wifi-status`, `wifi-clear`). The board prints its IP once connected.
+
+### Board-config overrides (cfg command)
+
+A whitelisted subset of board-profile fields can be overridden at runtime
+without a rebuild:
+
+```
+cfg <key> <value>
+```
+
+Examples: `cfg matrixOrder 1`, `cfg matrixPin 27`, `cfg activityLedPin 26`.
+Changes are saved to NVS and applied on the next reboot.
 
 ### OTA updates
 
@@ -254,6 +268,22 @@ library against a live device; run it for a quick end-to-end check:
 dotnet test  dotnet/LaserTag.sln                              # unit tests
 dotnet run --project dotnet/LaserTag.Smoke -- 192.168.1.24 20 # live REST + UDP roster
 ```
+
+---
+
+## Board capability HAL
+
+Each board is described by a compile-time `BoardProfile` struct (selected with
+`-D BOARD_LOLIN32` or `-D BOARD_S3_MATRIX` in `platformio.ini`) that declares
+its capabilities: IR rx/tx pins, hit-display type (WS2812 matrix, 3-pin RGB, or
+none), OLED geometry, audio output (piezo or I2S DAC stub), and NVS storage.
+Firmware and game-mode code target the HAL — `HitDisplay`, `IrTx`, `Sound` —
+rather than raw pins, so the same game logic runs on any profiled board.
+
+A whitelisted subset of profile fields (e.g. matrix data pin, pixel order,
+activity LED pin) can be overridden at runtime via the `cfg <key> <value>`
+serial command (see [Board-config overrides](#board-config-overrides-cfg-command));
+overrides are persisted in NVS and applied at boot.
 
 ---
 
@@ -418,7 +448,13 @@ lib/
   IrFramer/               Shared IR edge-framing (ISR + frame assembly)
   TagNet/                 Shared WiFi (serial creds) + OTA + UDP + HTTP server
   ControlProto/           Protocol-agnostic control-plane wire codec + TagEvent
+  Board/                  Compile-time BoardProfile per board (pins, capabilities)
+  HitDisplay/             WS2812 matrix / RGB hit-feedback output HAL
+  IrTx/                   IR transmit HAL
+  Sound/                  Sound cues (piezo; I2S DAC stub)
+  BoardNvs/               NVS override load + cfg serial command
 test/
+  test_board/             Native unit tests for Board/BoardNvs
   test_controlproto/      Native (host-compiled) unit tests for ControlProto
 dotnet/                   .NET 10 host ecosystem (LaserTag.sln)
   LaserTag.Client/        Typed REST + UDP client library (parser, roster, client)
