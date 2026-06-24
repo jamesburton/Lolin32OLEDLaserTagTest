@@ -35,6 +35,7 @@ struct BoardProfile {
 
   AudioKind audio;
   int8_t piezoPin;
+  int8_t i2sBclkPin, i2sWsPin, i2sDinPin; // I2sDac only; -1 = absent
 
   bool hasSdCard;
   int8_t activityLedPin;

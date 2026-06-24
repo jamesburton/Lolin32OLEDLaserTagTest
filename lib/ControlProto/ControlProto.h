@@ -158,6 +158,9 @@ struct ConfigDoc {
   int teamIndex[TeamColourCount] = {1, 2, 3, 4};        ///< colour map keys
   char teamColour[TeamColourCount][8] = {"#0000FF", "#FF0000", "#00FF00",
                                          "#FFFFFF"};     ///< "#RRGGBB" values
+  int teamSfx[TeamColourCount] = {0, 2, 3, 5}; ///< SFX bank index per team slot
+  int deathSfx = 6;                            ///< SFX bank index for the death cue
+  int startHp = 32;                            ///< starting health; one of 4/8/16/32
 };
 
 /// <summary>Serializes a ConfigDoc into the contract §2.2 ConfigDoc JSON.</summary>
@@ -245,6 +248,7 @@ enum class CommandKind {
   Bright,   ///< `{ "cmd": "bright", "value": <int> }`
   Hit,      ///< `{ "cmd": "hit", "team": <int>, "damage": <int> }`
   Debug,    ///< `{ "cmd": "debug", "value": <int> }`
+  Reset,    ///< `{ "cmd": "reset" }` — revive to full health (CTL reset parity)
 };
 
 /// <summary>Parsed POST /api/command body (contract §2.2 CommandDoc).</summary>

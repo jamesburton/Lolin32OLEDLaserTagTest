@@ -157,7 +157,8 @@ void test_serialize_config_golden() {
       "{\"deviceId\":\"a1b2c3\",\"hostname\":\"lasertag-matrix\",\"ownTeam\":2,"
       "\"enabledTeams\":[1,2,3,4],\"protocolId\":\"vatos\",\"brightness\":13,"
       "\"teamColours\":{\"1\":\"#0000FF\",\"2\":\"#FF0000\",\"3\":\"#00FF00\","
-      "\"4\":\"#FFFFFF\"}}",
+      "\"4\":\"#FFFFFF\"},\"teamSfx\":{\"1\":0,\"2\":2,\"3\":3,\"4\":5},"
+      "\"deathSfx\":6,\"startHp\":32}",
       buf);
 }
 
@@ -243,6 +244,18 @@ void test_patch_config_round_trip() {
   char buf2[512];
   serializeConfig(blank, buf2, sizeof(buf2));
   TEST_ASSERT_EQUAL_STRING(buf, buf2);
+}
+
+void test_patch_config_start_hp_valid_and_invalid() {
+  ConfigDoc cfg;
+  PatchResult ok = applyConfigPatch("{\"startHp\":8}", cfg);
+  TEST_ASSERT_TRUE(ok.ok);
+  TEST_ASSERT_EQUAL_INT(8, cfg.startHp);
+  // A non-enumerated value is rejected and leaves the config unchanged.
+  PatchResult bad = applyConfigPatch("{\"startHp\":10}", cfg);
+  TEST_ASSERT_FALSE(bad.ok);
+  TEST_ASSERT_EQUAL_STRING("startHp must be 4/8/16/32", bad.error);
+  TEST_ASSERT_EQUAL_INT(8, cfg.startHp);
 }
 
 // --- §2.2 Status serialize golden vector -----------------------------------
@@ -377,6 +390,7 @@ int main(int, char **) {
   RUN_TEST(test_patch_config_unknown_field_leaves_known_unchanged);
   RUN_TEST(test_patch_config_arrays_and_colours);
   RUN_TEST(test_patch_config_round_trip);
+  RUN_TEST(test_patch_config_start_hp_valid_and_invalid);
   RUN_TEST(test_serialize_status_golden);
   RUN_TEST(test_parse_and_serialize_mode_golden);
   RUN_TEST(test_parse_mode_malformed);

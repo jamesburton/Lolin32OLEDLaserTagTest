@@ -152,6 +152,15 @@ size_t serializeConfig(const ConfigDoc &cfg, char *out, size_t outSize) {
     snprintf(key, sizeof(key), "%d", cfg.teamIndex[i]);
     colours[key] = cfg.teamColour[i];
   }
+  // teamSfx is keyed by team index (like teamColours) so it survives reordering.
+  JsonObject sfx = doc["teamSfx"].to<JsonObject>();
+  for (size_t i = 0; i < TeamColourCount; i++) {
+    char key[4];
+    snprintf(key, sizeof(key), "%d", cfg.teamIndex[i]);
+    sfx[key] = cfg.teamSfx[i];
+  }
+  doc["deathSfx"] = cfg.deathSfx;
+  doc["startHp"] = cfg.startHp;
   return serializeJson(doc, out, outSize);
 }
 
@@ -219,6 +228,25 @@ PatchResult applyConfigPatch(const char *json, ConfigDoc &cfg) {
           }
         }
       }
+    } else if (strcmp(key, "teamSfx") == 0) {
+      // Keys are team indices as JSON strings; values are SFX bank indices.
+      for (JsonPair c : kv.value().as<JsonObject>()) {
+        const int idx = atoi(c.key().c_str());
+        for (size_t i = 0; i < TeamColourCount; i++) {
+          if (staged.teamIndex[i] == idx) {
+            staged.teamSfx[i] = c.value().as<int>();
+          }
+        }
+      }
+    } else if (strcmp(key, "deathSfx") == 0) {
+      staged.deathSfx = kv.value().as<int>();
+    } else if (strcmp(key, "startHp") == 0) {
+      const int v = kv.value().as<int>();
+      if (v != 4 && v != 8 && v != 16 && v != 32) {
+        snprintf(res.error, sizeof(res.error), "startHp must be 4/8/16/32");
+        return res;
+      }
+      staged.startHp = v;
     } else {
       // Unknown field → reject the whole patch (HTTP 400), cfg unchanged.
       snprintf(res.error, sizeof(res.error), "unknown field: %s", key);
@@ -319,6 +347,10 @@ bool parseCommand(const char *json, CommandDoc &out) {
   if (strcmp(cmd, "debug") == 0) {
     out.kind = CommandKind::Debug;
     out.value = doc["value"].as<int>();
+    return true;
+  }
+  if (strcmp(cmd, "reset") == 0) {
+    out.kind = CommandKind::Reset;
     return true;
   }
   return false;

@@ -12,6 +12,7 @@ static const BoardProfile kLolin32 = {
     /*screen*/ ScreenKind::Ssd1306, /*screenW*/ 128, /*screenH*/ 32,
     /*sdaPin*/ 5, /*sclPin*/ 4, /*i2cAddr*/ 0x3C,
     /*audio*/ AudioKind::None, /*piezoPin*/ -1,
+    /*i2sBclkPin*/ -1, /*i2sWsPin*/ -1, /*i2sDinPin*/ -1,
     /*hasSdCard*/ false, /*activityLedPin*/ 26,
 };
 
@@ -23,7 +24,8 @@ static const BoardProfile kS3Matrix = {
     /*rgbR*/ -1, /*rgbG*/ -1, /*rgbB*/ -1, /*rgbCommonAnode*/ false,
     /*screen*/ ScreenKind::None, /*screenW*/ 0, /*screenH*/ 0,
     /*sdaPin*/ -1, /*sclPin*/ -1, /*i2cAddr*/ 0,
-    /*audio*/ AudioKind::None, /*piezoPin*/ -1,
+    /*audio*/ AudioKind::I2sDac, /*piezoPin*/ -1,
+    /*i2sBclkPin*/ 38, /*i2sWsPin*/ 39, /*i2sDinPin*/ 40,
     /*hasSdCard*/ false, /*activityLedPin*/ 7,
 };
 
@@ -48,6 +50,9 @@ bool applyOverride(BoardProfile &p, const char *key, long value) {
   if (strcmp(key, "rgbG") == 0 && validPin(value)) { p.rgbG = (int8_t)value; return true; }
   if (strcmp(key, "rgbB") == 0 && validPin(value)) { p.rgbB = (int8_t)value; return true; }
   if (strcmp(key, "activityLedPin") == 0 && validPin(value)) { p.activityLedPin = (int8_t)value; return true; }
+  if (strcmp(key, "i2sBclkPin") == 0 && validPin(value)) { p.i2sBclkPin = (int8_t)value; return true; }
+  if (strcmp(key, "i2sWsPin") == 0 && validPin(value))   { p.i2sWsPin   = (int8_t)value; return true; }
+  if (strcmp(key, "i2sDinPin") == 0 && validPin(value))  { p.i2sDinPin  = (int8_t)value; return true; }
   return false; // unknown key or out-of-range value -> safe fallback
 }
 

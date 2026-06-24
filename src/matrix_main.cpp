@@ -58,8 +58,8 @@ constexpr uint32_t DefaultDarkMaxMs = 5000;
 // Heartbeat cadence (contract §4).
 constexpr uint32_t HeartbeatMs = 2000;
 
-// Damage taken per hit when the shot doesn't carry usable damage.
-constexpr int StartHp = 32;
+// Starting health is selectable (4/8/16/32) via config.startHp; the health bar
+// scales to the chosen max, so full health fills the central columns regardless.
 
 // Visual state machine (drives the LEDs).
 enum class Vis { Rainbow, Flash, Dark, Dead };
@@ -73,8 +73,9 @@ char activeMode[24] = "idle"; // neutral idle on fresh boot; HB mode=
 uint32_t darkMinMs = DefaultDarkMinMs;
 uint32_t darkMaxMs = DefaultDarkMaxMs;
 
-// Device-authoritative runtime health (design §6).
-int hp = StartHp;
+// Device-authoritative runtime health (design §6). Initialised from
+// config.startHp in setup() once NVS config is loaded.
+int hp = 32;
 
 int hitTeam = 0;
 uint8_t flashesLeft = 0;
@@ -108,7 +109,11 @@ bool saveConfig() {
     char key[12];
     snprintf(key, sizeof(key), "colour%d", config.teamIndex[i]);
     nvs.putString(key, config.teamColour[i]);
+    snprintf(key, sizeof(key), "sfx%d", config.teamIndex[i]);
+    nvs.putInt(key, config.teamSfx[i]);
   }
+  nvs.putInt("deathSfx", config.deathSfx);
+  nvs.putInt("startHp", config.startHp);
   nvs.putString("hostname", config.hostname);
   return true;
 }
@@ -145,9 +150,11 @@ void loadConfig() {
     start = comma + 1;
   }
 
-  // teamColours: per-index override, default B/R/G/W.
+  // teamColours: per-index override, default B/R/G/W. teamSfx: SFX bank index
+  // per team, default {wail, rise, fall, twotone}; deathSfx: the death cue.
   static const char *defaults[cp::TeamColourCount] = {"#0000FF", "#FF0000",
                                                       "#00FF00", "#FFFFFF"};
+  static const int sfxDefaults[cp::TeamColourCount] = {0, 2, 3, 5};
   for (size_t i = 0; i < cp::TeamColourCount; i++) {
     config.teamIndex[i] = (int)i + 1;
     char key[12];
@@ -155,7 +162,11 @@ void loadConfig() {
     String c = nvs.getString(key, defaults[i]);
     strncpy(config.teamColour[i], c.c_str(), sizeof(config.teamColour[i]) - 1);
     config.teamColour[i][sizeof(config.teamColour[i]) - 1] = '\0';
+    snprintf(key, sizeof(key), "sfx%d", config.teamIndex[i]);
+    config.teamSfx[i] = nvs.getInt(key, sfxDefaults[i]);
   }
+  config.deathSfx = nvs.getInt("deathSfx", 6);
+  config.startHp = nvs.getInt("startHp", 32);
 }
 
 // --- LEDs -------------------------------------------------------------------
@@ -167,6 +178,15 @@ static const char *teamColourHex(int team) {
     if (config.teamIndex[i] == team) return config.teamColour[i];
   }
   return "#FF00FF";
+}
+
+// SFX bank index for a firing team, from the persisted teamSfx[] config (mirror
+// of teamColourHex). Falls back to the first slot for an unknown team.
+static int teamSfxIndex(int team) {
+  for (size_t i = 0; i < cp::TeamColourCount; i++) {
+    if (config.teamIndex[i] == team) return config.teamSfx[i];
+  }
+  return config.teamSfx[0];
 }
 
 // --- Telemetry helpers ------------------------------------------------------
@@ -195,15 +215,16 @@ void applyHit(const cp::TagEvent &ev) {
                      ev.protocolId, hp, millis());
   TagNet::event(buf);
 
-  Sound::cue(Sound::Cue::Hit);
   hitTeam = ev.team;
   if (hp == 0) {
-    // Dead: hold dark until respawn / CTL reset.
-    Sound::cue(Sound::Cue::Dead);
+    // Dead: play the death cue only (no hit siren on the fatal shot) and hold
+    // dark until respawn / CTL reset.
+    Sound::playIndex(config.deathSfx);
     vis = Vis::Dead;
     HitDisplay::dark();
     emitState("dead", -1);
   } else {
+    Sound::playIndex(teamSfxIndex(ev.team)); // siren for the firing team
     flashesLeft = FlashCount;
     flashOn = true;
     vis = Vis::Flash;
@@ -219,7 +240,7 @@ void handleControl(const cp::Control &c) {
   switch (c.kind) {
   case cp::ControlKind::Start:
     // Arm for play: full health, idling ready.
-    hp = StartHp;
+    hp = config.startHp;
     vis = Vis::Rainbow;
     Sound::cue(Sound::Cue::Start);
     emitState("ready", hp);
@@ -235,11 +256,11 @@ void handleControl(const cp::Control &c) {
     if (c.hasHp && c.hp <= 0) {
       hp = 0;
       vis = Vis::Dead;
-      Sound::cue(Sound::Cue::Dead);
+      Sound::playIndex(config.deathSfx);
       HitDisplay::dark();
       emitState("dead", -1);
     } else {
-      hp = c.hasHp ? c.hp : StartHp;
+      hp = c.hasHp ? c.hp : config.startHp;
       vis = Vis::Rainbow;
       Sound::cue(Sound::Cue::Respawn);
       emitState("respawn", hp);
@@ -269,6 +290,14 @@ bool runCommand(const cp::CommandDoc &cmd) {
   case cp::CommandKind::Debug:
     debugFrames = cmd.value != 0;
     return true;
+  case cp::CommandKind::Reset: {
+    // Revive to full health. Routes through the CTL reset logic so the REST and
+    // UDP/serial reset paths can't diverge.
+    cp::Control c;
+    c.kind = cp::ControlKind::Reset;
+    handleControl(c);
+    return true;
+  }
   case cp::CommandKind::None:
     return false;
   }
@@ -302,6 +331,23 @@ void onLine(const char *line) {
     }
   } else if (strncmp(line, "debug ", 6) == 0) {
     debugFrames = atoi(line + 6) != 0;
+  } else if (strncmp(line, "sfx ", 4) == 0) {
+    // Bench helper: play a bank entry on demand (bypasses game state) so any
+    // sound — including the death cue — can be auditioned without a full game.
+    Sound::playIndex(atoi(line + 4));
+  } else if (strncmp(line, "lives ", 6) == 0) {
+    // Select starting health (4/8/16/32), persist it, and revive to it.
+    int n = atoi(line + 6);
+    if (n == 4 || n == 8 || n == 16 || n == 32) {
+      config.startHp = n;
+      saveConfig();
+      hp = config.startHp;
+      vis = Vis::Rainbow;
+      emitState("ready", hp);
+      Serial.printf("lives=%d\n", config.startHp);
+    } else {
+      Serial.println("lives must be 4, 8, 16 or 32");
+    }
   }
 }
 
@@ -489,6 +535,7 @@ void setup() {
 
   nvs.begin("matrix", false);
   loadConfig();
+  hp = config.startHp; // adopt the configured starting health
   HitDisplay::setBrightness(config.brightness);
 
   TagNet::onLine(onLine);             // CTL + legacy bright/hit/debug
@@ -515,6 +562,14 @@ void loop() {
                         WiFi.localIP().toString().c_str(), kFirmwareVersion,
                         config.ownTeam, activeMode, hp);
     TagNet::event(buf);
+
+    // Recurring SFX status so the last-played sample is always in the newest
+    // serial output — pick a favourite from here after auditioning by shooting.
+    if (Sound::present()) {
+      Serial.printf("[sfx] last=%u/%u name=%s plays=%lu\n", Sound::sfxLastIndex(),
+                    Sound::sfxCount(), Sound::sfxLastName(),
+                    (unsigned long)Sound::sfxPlays());
+    }
   }
 
   // Switch the activity LED off once its pulse has elapsed
@@ -573,7 +628,7 @@ void loop() {
       static uint32_t lastFrameMs = 0;
       if (now - lastFrameMs >= 20) {
         lastFrameMs = now;
-        HitDisplay::idleWithHealth(hp, StartHp);
+        HitDisplay::idleWithHealth(hp, config.startHp);
       }
     }
     break;
