@@ -135,14 +135,20 @@ void test_rejects_non_riff_buffer() {
 }
 
 void test_rejects_chunk_size_that_would_overflow_bounds_check() {
-  // Crafted WAV with a data chunk whose declared size (0xFFFFFFF0) would
-  // cause integer overflow in the old vulnerable bounds check on 32-bit systems.
-  // Old check: chunkBody + chunkSize > len (vulnerable to wraparound)
-  // New check: chunkSize > len - chunkBody (safe, uses subtraction)
-  // With old code: chunkBody=44, chunkSize=0xFFFFFFF0, len=64
-  //   44 + 0xFFFFFFF0 = 0x100000034 (wraps to 0x34=52 on 32-bit)
-  //   52 > 64? No, so incorrectly passes.
-  // With new code: 0xFFFFFFF0 > 64 - 44 = 0xFFFFFFF0 > 20? Yes, correctly rejects.
+  // Regression test: verifies that a chunk header declaring a size far exceeding
+  // the available buffer is correctly rejected (a real-world corrupted/truncated
+  // file scenario). The data chunk declares size 0xFFFFFFF0, but only 20 bytes
+  // are available (buf[44..63]).
+  //
+  // NOTE: The production fix in lib/Storage/WavFile.cpp changes the bounds check
+  // from (chunkBody + chunkSize > len) to (chunkSize > len - chunkBody) to guard
+  // against uint32_t chunkSize overflowing a 32-bit size_t addition. This specific
+  // 32-bit overflow scenario cannot be exercised by a test running on a native/64-bit
+  // host toolchain. The fix's correctness for 32-bit systems was verified by
+  // arithmetic inspection: the loop's `pos + 8 <= len` condition guarantees
+  // chunkBody <= len, so len - chunkBody cannot underflow; the subtraction-based
+  // check is algebraically equivalent to the addition-based one without the
+  // overflow risk.
   uint8_t buf[64] = {0};
   memcpy(buf, "RIFF", 4);
   uint32_t riffSize = 56;  // total - 8
