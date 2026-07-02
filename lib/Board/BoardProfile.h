@@ -37,8 +37,13 @@ struct BoardProfile {
   int8_t piezoPin;
   int8_t i2sBclkPin, i2sWsPin, i2sDinPin; // I2sDac only; -1 = absent
 
-  bool hasSdCard;
+  int8_t sdCsPin, sdMosiPin, sdMisoPin, sdSckPin; // -1 = absent (no card)
+
   int8_t activityLedPin;
+
+  /// True when a card is wired (sdCsPin >= 0). Computed rather than a
+  /// separately hand-set field so it can never disagree with the pins.
+  bool hasSdCard() const { return sdCsPin >= 0; }
 };
 
 /// Returns the compiled-in profile selected by the -D BOARD_* build flag.
@@ -47,7 +52,8 @@ const BoardProfile &active();
 /// Applies one whitelisted runtime override onto a profile copy. Returns false
 /// (and leaves the profile unchanged) for an unknown key or an out-of-range
 /// value (safe fallback). Whitelisted keys: matrixPin, matrixW, matrixH,
-/// matrixOrder (0=Grb,1=Rgb), rgbR, rgbG, rgbB, activityLedPin.
+/// matrixOrder (0=Grb,1=Rgb), rgbR, rgbG, rgbB, activityLedPin, i2sBclkPin,
+/// i2sWsPin, i2sDinPin, sdCsPin, sdMosiPin, sdMisoPin, sdSckPin.
 bool applyOverride(BoardProfile &p, const char *key, long value);
 
 /// Parses "#RRGGBB" (or "RRGGBB") into an Rgb. Returns false on malformed input.

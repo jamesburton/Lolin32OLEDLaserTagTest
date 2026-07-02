@@ -76,6 +76,37 @@ void test_override_matrix_order() {
   TEST_ASSERT_FALSE(applyOverride(p, "matrixOrder", 5)); // out of range
 }
 
+// --- SD pins --------------------------------------------------------------
+
+void test_s3_matrix_profile_sd_pins() {
+#if defined(BOARD_S3_MATRIX)
+  const BoardProfile &p = active();
+  TEST_ASSERT_EQUAL_INT8(36, p.sdCsPin);
+  TEST_ASSERT_EQUAL_INT8(34, p.sdMosiPin);
+  TEST_ASSERT_EQUAL_INT8(35, p.sdMisoPin);
+  TEST_ASSERT_EQUAL_INT8(33, p.sdSckPin);
+  TEST_ASSERT_TRUE(p.hasSdCard());
+#else
+  const BoardProfile &p = active();
+  TEST_ASSERT_EQUAL_INT8(-1, p.sdCsPin);
+  TEST_ASSERT_FALSE(p.hasSdCard());
+#endif
+}
+
+void test_override_valid_sd_cs_pin() {
+  BoardProfile p = active();
+  TEST_ASSERT_TRUE(applyOverride(p, "sdCsPin", 5));
+  TEST_ASSERT_EQUAL_INT8(5, p.sdCsPin);
+  TEST_ASSERT_TRUE(p.hasSdCard());
+}
+
+void test_override_out_of_range_sd_pin_ignored() {
+  BoardProfile p = active();
+  int8_t before = p.sdSckPin;
+  TEST_ASSERT_FALSE(applyOverride(p, "sdSckPin", 999));
+  TEST_ASSERT_EQUAL_INT8(before, p.sdSckPin);
+}
+
 // --- main ---------------------------------------------------------------------
 
 int main(int, char **) {
@@ -88,5 +119,8 @@ int main(int, char **) {
   RUN_TEST(test_override_unknown_key_ignored);
   RUN_TEST(test_override_out_of_range_pin_ignored);
   RUN_TEST(test_override_matrix_order);
+  RUN_TEST(test_s3_matrix_profile_sd_pins);
+  RUN_TEST(test_override_valid_sd_cs_pin);
+  RUN_TEST(test_override_out_of_range_sd_pin_ignored);
   return UNITY_END();
 }
