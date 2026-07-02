@@ -35,7 +35,7 @@ bool parseWav(const uint8_t *buf, size_t len, WavView &out, const char *&err) {
     uint32_t chunkSize = readU32LE(buf + pos + 4);
     size_t chunkBody = pos + 8;
 
-    if (chunkBody + chunkSize > len) {
+    if (chunkSize > len - chunkBody) {
       err = "chunk exceeds buffer";
       return false;
     }

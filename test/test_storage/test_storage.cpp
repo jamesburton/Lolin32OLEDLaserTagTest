@@ -134,6 +134,47 @@ void test_rejects_non_riff_buffer() {
   TEST_ASSERT_NOT_NULL(err);
 }
 
+void test_rejects_chunk_size_that_would_overflow_bounds_check() {
+  // Crafted WAV with a data chunk whose declared size (0xFFFFFFF0) would
+  // cause integer overflow in the old vulnerable bounds check on 32-bit systems.
+  // Old check: chunkBody + chunkSize > len (vulnerable to wraparound)
+  // New check: chunkSize > len - chunkBody (safe, uses subtraction)
+  // With old code: chunkBody=44, chunkSize=0xFFFFFFF0, len=64
+  //   44 + 0xFFFFFFF0 = 0x100000034 (wraps to 0x34=52 on 32-bit)
+  //   52 > 64? No, so incorrectly passes.
+  // With new code: 0xFFFFFFF0 > 64 - 44 = 0xFFFFFFF0 > 20? Yes, correctly rejects.
+  uint8_t buf[64] = {0};
+  memcpy(buf, "RIFF", 4);
+  uint32_t riffSize = 56;  // total - 8
+  memcpy(buf + 4, &riffSize, 4);
+  memcpy(buf + 8, "WAVE", 4);
+
+  // fmt chunk at offset 12
+  memcpy(buf + 12, "fmt ", 4);
+  uint32_t fmtSize = 16;
+  memcpy(buf + 16, &fmtSize, 4);
+  uint16_t audioFormat = 1, channels = 1, bits = 16;
+  uint32_t rate = 16000, byteRate = 32000;
+  uint16_t blockAlign = 2;
+  memcpy(buf + 20, &audioFormat, 2);
+  memcpy(buf + 22, &channels, 2);
+  memcpy(buf + 24, &rate, 4);
+  memcpy(buf + 28, &byteRate, 4);
+  memcpy(buf + 32, &blockAlign, 2);
+  memcpy(buf + 34, &bits, 2);
+
+  // data chunk at offset 36 with malicious chunkSize
+  memcpy(buf + 36, "data", 4);
+  uint32_t evilChunkSize = 0xFFFFFFF0;
+  memcpy(buf + 40, &evilChunkSize, 4);
+  // buf + 44 onwards is "data" payload (only 20 bytes available, not 0xFFFFFFF0)
+
+  WavView view;
+  const char *err = nullptr;
+  TEST_ASSERT_FALSE(parseWav(buf, sizeof(buf), view, err));
+  TEST_ASSERT_NOT_NULL(err);
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_parses_valid_16k_16bit_mono);
@@ -143,5 +184,6 @@ int main(int, char **) {
   RUN_TEST(test_rejects_missing_data_chunk);
   RUN_TEST(test_rejects_truncated_buffer);
   RUN_TEST(test_rejects_non_riff_buffer);
+  RUN_TEST(test_rejects_chunk_size_that_would_overflow_bounds_check);
   return UNITY_END();
 }
