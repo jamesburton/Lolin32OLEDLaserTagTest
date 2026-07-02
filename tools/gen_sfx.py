@@ -10,8 +10,10 @@ The first three sirens are the auditioned-and-approved set; the last three are
 permutations around them (a descending counterpart, a faster wail, a slower
 two-tone) to give six distinct options for assigning to teams + death later.
 """
+import argparse
 import os
 import sys
+import wave
 
 import numpy as np
 
@@ -70,7 +72,32 @@ def synth_siren(seconds, freq_fn):
     return np.clip(x * 32767.0, -32768, 32767).astype(np.int16)
 
 
+def write_wav(path, samples_int16, rate=RATE):
+    """Write a single int16 PCM clip to a standard 16 kHz/16-bit/mono WAV
+    file, e.g. for copying onto an SD card as a hardware test fixture."""
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)  # 16-bit
+        w.setframerate(rate)
+        w.writeframes(samples_int16.tobytes())
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--wav", metavar="OUTPUT.wav",
+        help="Write the death cue clip's PCM samples to a standalone WAV "
+             "file (16 kHz/16-bit/mono) instead of generating SfxData.h. "
+             "Intended for producing SD-card hardware test clips.")
+    args = parser.parse_args()
+
+    if args.wav:
+        pcm = synth_death()
+        write_wav(args.wav, pcm)
+        print(f"Wrote {os.path.normpath(args.wav)}: "
+              f"{len(pcm)/RATE:.2f}s  {len(pcm) * 2 / 1024:.1f} KB")
+        return 0
+
     entries = [(ident, synth_siren(secs, fn)) for ident, secs, fn in SIRENS]
     entries.append(("death-woowoo", synth_death()))
     for ident, pcm in entries:
