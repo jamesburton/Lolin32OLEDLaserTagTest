@@ -10,7 +10,7 @@ Codes & features behind interfaces so other guns/protocols and boards plug in.
 **This session's audio work is UNCOMMITTED** (working tree has changes; user
 commits only when asked). Everything below "Layers complete" is merged to `main`
 (latest `126f564`, PR #1); the **MAX98357A I2S sound + siren/death SFX bank +
-selectable lives** sits on top, unstaged. All native tests pass (38), the
+selectable lives** sits on top, unstaged. All native tests pass (38 then; now 48 — see Tests below), the
 `esp32-s3-matrix` env builds, and the S3 board is flashed with it over USB (COM6).
 
 ### This session — sound on the ESP32-S3-Matrix (uncommitted)
@@ -129,7 +129,7 @@ all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
   toggle resets the S3 into bootloader) and **`NewLine="`n"`** (a trailing `\r`
   breaks `CTL`/verb parsing). Read with `ReadExisting()` after a short sleep.
 - **Contract tests run via `pio test -e native`** (NOT `pio run -e native`, which
-  tries to compile the Arduino `src/` and fails). 38 tests.
+  tries to compile the Arduino `src/` and fails). 48 tests (see Tests above).
 - Matrix stunned/dark interval is **1–5 s (TESTING)**; revert to 5–15 s for play.
 - WiFi 2.4GHz `CommunityFibre10Gb_28750`; creds in NVS (survive OTA). Set via
   `tools/set-wifi.ps1 -Port COMx -Ssid ... -Password ...`.
@@ -149,7 +149,7 @@ all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
   save/load of teamSfx/deathSfx/startHp; serial verbs `sfx`/`lives`; REST reset;
   recurring `[sfx]` status line.
 - `test/test_controlproto/test_controlproto.cpp` — updated config golden +
-  `startHp` validation test (38 pass).
+  `startHp` validation test (38 total then; now 48 — see Tests above).
 
 ## Next Steps
 1. **microSD spike — implementation complete, hardware verification pending.** Built:
