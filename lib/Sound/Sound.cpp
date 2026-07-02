@@ -183,6 +183,17 @@ void playIndex(int idx) {
 #endif
 }
 
+void playRaw(const int16_t *data, size_t samples) {
+#if defined(ESP32)
+  if (kind != Board::AudioKind::I2sDac) return;
+  if (data == nullptr || samples == 0) return;
+  playPcm(data, samples);
+#else
+  (void)data;
+  (void)samples;
+#endif
+}
+
 uint8_t sfxCount() {
 #if defined(HAVE_SFX_BANK)
   return (uint8_t)kSfxBankCount; // embedded samples

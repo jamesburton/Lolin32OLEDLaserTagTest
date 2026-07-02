@@ -18,6 +18,7 @@ bool present();
 // indices are a logged no-op. These report the last-played entry for logging.
 
 void        playIndex(int idx); // play bank entry idx; no-op if out of range
+void        playRaw(const int16_t *data, size_t samples); // I2sDac only; no-op otherwise
 uint8_t     sfxCount();      // bank size
 uint8_t     sfxLastIndex();  // index of the most recently played entry
 const char *sfxLastName();   // name of the most recently played entry

@@ -28,7 +28,9 @@
 #include <BoardProfile.h>
 #include <BoardNvs.h>
 #include <HitDisplay.h>
+#include <SdCard.h>
 #include <Sound.h>
+#include <WavFile.h>
 
 #include <ControlProto.h>
 #include <IrFramer.h>
@@ -347,6 +349,36 @@ void onLine(const char *line) {
       Serial.printf("lives=%d\n", config.startHp);
     } else {
       Serial.println("lives must be 4, 8, 16 or 32");
+    }
+  } else if (strcmp(line, "sdplay") == 0) {
+    // Spike bench helper: mount the card, list /sfx/, and play one .wav
+    // through the existing I2S path. Bypasses game state entirely.
+    const Board::BoardProfile &prof = Board::active();
+    if (!prof.hasSdCard()) {
+      Serial.println("[sd] sdplay: no SD card configured on this board");
+    } else if (!Storage::sdBegin(prof.sdCsPin, prof.sdMosiPin, prof.sdMisoPin,
+                                  prof.sdSckPin)) {
+      Serial.println("[sd] sdplay: mount failed");
+    } else {
+      Storage::sdList("/sfx", [](const char *name) {
+        Serial.printf("[sd] /sfx/%s\n", name);
+      });
+      size_t fileLen = 0;
+      uint8_t *buf = Storage::sdReadFile("/sfx/test.wav", fileLen);
+      if (buf == nullptr) {
+        Serial.println("[sd] sdplay: could not read /sfx/test.wav");
+      } else {
+        Storage::WavView view;
+        const char *err = nullptr;
+        if (!Storage::parseWav(buf, fileLen, view, err)) {
+          Serial.printf("[sd] sdplay: WAV rejected (%s)\n", err);
+        } else {
+          Serial.printf("[sd] sdplay: playing %u samples @ %uHz\n",
+                        (unsigned)view.sampleCount, (unsigned)view.sampleRate);
+          Sound::playRaw(view.pcm, view.sampleCount);
+        }
+        free(buf);
+      }
     }
   }
 }
