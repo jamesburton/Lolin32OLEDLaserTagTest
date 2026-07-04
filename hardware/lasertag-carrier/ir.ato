@@ -1,0 +1,47 @@
+"""Block 4 -- IR receiver (J6) + IR TX transistor driver (2N2222A, Q1/R1/R2/J7).
+
+Ref: ../../.docs/pcb-blocks.md Block 4. D1: IR TX is GP37 (not GP2).
+D2: Q1=2N2222A, R1=470R (base), R2=33R (LED, ~105mA @5V). D10: J6 pin order
+OUT.GND.VCC.
+"""
+
+from "generics.ato" import PinHeader1x3, PinHeader1x2, ResistorTHT, CapCeramicDisc, NpnTo92
+
+module IrBlock:
+    # Carrier-facing nets
+    signal VCC5
+    signal VCC3V3
+    signal GND
+    signal ir_rx      # from parent J1.10 / GP1
+    signal ir_tx      # from parent J2.5 / GP37
+
+    # J6 -- IR RX header, pin order OUT . GND . VCC (D10). Verify against the
+    # specific receiver's datasheet before soldering (HS0038(B) preferred).
+    j6 = new PinHeader1x3
+    j6.p1 ~ ir_rx
+    j6.p2 ~ GND
+    j6.p3 ~ VCC3V3
+
+    # C9 -- IR RX VCC decoupling, 100nF directly at J6.3/J6.2
+    c9 = new CapCeramicDisc
+    c9.p1 ~ VCC3V3
+    c9.p2 ~ GND
+
+    # IR TX driver:
+    #   GP37 --[R1 470R]--> Q1.base
+    #   VCC5 --[R2 33R]--> J7.1 (LED anode) ... J7.2 (LED cathode) --> Q1.collector
+    #   Q1.emitter --> GND
+    r1 = new ResistorTHT
+    r2 = new ResistorTHT
+    q1 = new NpnTo92
+
+    ir_tx ~ r1.p1
+    r1.p2 ~ q1.base
+    q1.emitter ~ GND
+
+    # J7 -- IR LED cable header. Pin1 = LED anode (+), Pin2 = LED cathode (-).
+    # The IR LED itself lives off-board on a cable; only R2 is on the carrier.
+    j7 = new PinHeader1x2
+    VCC5 ~ r2.p1
+    r2.p2 ~ j7.p1
+    j7.p2 ~ q1.collector

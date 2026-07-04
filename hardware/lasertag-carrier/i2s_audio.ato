@@ -1,0 +1,48 @@
+"""Block 2 -- i2s_audio: MAX98357A breakout (J3), speaker header (J4),
+VIN bulk cap (C3), SD hard-mute jumper (JP1) and GAIN strap (JP2).
+
+Ref: ../../.docs/pcb-blocks.md Block 2. D7: JP1 default open (GP2 free,
+amp always enabled). D8: JP2 default open = float = 9dB.
+"""
+
+from "generics.ato" import PinSocket1x7, PinHeader1x2, CapElyt10mm, SolderJumper2, SolderJumper3
+
+module AudioBlock:
+    signal VCC5
+    signal GND
+    signal i2s_ws     # from parent J2.7 / GP39
+    signal i2s_bclk   # from parent J2.6 / GP38
+    signal i2s_din    # from parent J2.8 / GP40
+    signal gp2        # from parent GP2 role-selector net (JP1 hard-mute leg)
+
+    # J3 -- MAX98357A 1x7 header: LRC/BCLK/DIN/GAIN/SD/GND/VIN
+    j3 = new PinSocket1x7
+    j3.p1 ~ i2s_ws
+    j3.p2 ~ i2s_bclk
+    j3.p3 ~ i2s_din
+    j3.p6 ~ GND
+    j3.p7 ~ VCC5
+
+    # C3 -- VIN bulk cap at J3.7/J3.6 (Class-D switching spike suppression)
+    c3 = new CapElyt10mm
+    c3.p1 ~ VCC5
+    c3.p2 ~ GND
+
+    # JP1 -- GP2 <-> AUDIO_SD hard-mute (D7). Default open: SD floats HIGH via
+    # the module's own 100k pull-up (amp always enabled); GP2 stays free.
+    jp1 = new SolderJumper2
+    jp1.a ~ gp2
+    jp1.b ~ j3.p5
+
+    # JP2 -- GAIN 3-way strap (D8): common = GAIN (J3.4); leg a = GND (15dB);
+    # leg b = VIN/VCC5 (3dB); default (jumper open) = float = 9dB.
+    jp2 = new SolderJumper3
+    jp2.common ~ j3.p4
+    jp2.a ~ GND
+    jp2.b ~ VCC5
+
+    # J4 -- speaker output header. SPK+/SPK- are off-board nets that terminate
+    # at the MAX98357A module's own solder pads (Assumption #10) -- left
+    # unconnected here on purpose; wire via short cable per the module's SPK
+    # pads at assembly time.
+    j4 = new PinHeader1x2

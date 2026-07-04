@@ -1,0 +1,26 @@
+"""Block 5 -- ws2812_out: external WS2812 strip output header (J8) with
+series resistor (R3) on DATA and bulk cap (C6) on 5V.
+
+Ref: ../../.docs/pcb-blocks.md Block 5. DATA = GP6 (Assumption #1).
+"""
+
+from "generics.ato" import PinHeader1x3, ResistorTHT, CapElyt10mm
+
+module Ws2812OutBlock:
+    signal VCC5
+    signal GND
+    signal ws_data   # from parent J1.5 / GP6
+
+    r3 = new ResistorTHT
+
+    # J8 -- strip output header: Pin1=5V, Pin2=DATA, Pin3=GND
+    j8 = new PinHeader1x3
+    ws_data ~ r3.p1
+    r3.p2 ~ j8.p2
+    VCC5 ~ j8.p1
+    GND ~ j8.p3
+
+    # C6 -- bulk reservoir for strip inrush at J8.1/J8.3
+    c6 = new CapElyt10mm
+    c6.p1 ~ VCC5
+    c6.p2 ~ GND

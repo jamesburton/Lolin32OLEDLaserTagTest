@@ -1,0 +1,49 @@
+"""Block 3 -- microsd_spi: microSD breakout socket (J5, primary per D4),
+decoupling (C4/C5) and the SD_VDD source-select jumper (JP3, D9).
+
+Ref: ../../.docs/pcb-blocks.md Block 3.
+
+STUB / ASSUMPTION: U5 (optional 3V3 LDO), C10, C11 are DNP by default (D9) --
+the dedicated-LDO durability option is intentionally NOT instantiated here.
+JP3 is modelled as a plain 2-pad solder jumper bridging SD_VDD to VCC3V3,
+which is exactly the default (U5-not-fitted) configuration; the U5-output
+alternate leg doesn't exist unless U5 is later added. Log this if/when U5 is
+populated in a future revision.
+"""
+
+from "generics.ato" import PinSocket1x6, CapCeramicDisc, CapElyt5mm, SolderJumper2
+
+module MicroSdBlock:
+    signal VCC3V3
+    signal GND
+    signal sd_sck    # from parent J2.1 / GP33
+    signal sd_mosi   # from parent J2.2 / GP34
+    signal sd_miso   # from parent J2.3 / GP35
+    signal sd_cs     # from parent J2.4 / GP36
+
+    # J5 -- 6-pin breakout socket, pin order: 3V3 . CS . MOSI . CLK . MISO . GND
+    j5 = new PinSocket1x6
+
+    # JP3 -- SD_VDD source-select jumper (D9). Default state modelled: bridges
+    # SD_VDD to VCC3V3 (U5 DNP).
+    jp3 = new SolderJumper2
+    signal sd_vdd
+    jp3.a ~ sd_vdd
+    jp3.b ~ VCC3V3
+
+    j5.p1 ~ sd_vdd
+    j5.p2 ~ sd_cs
+    j5.p3 ~ sd_mosi
+    j5.p4 ~ sd_sck
+    j5.p5 ~ sd_miso
+    j5.p6 ~ GND
+
+    # C4 -- 100nF HF decoupling at the card power pin (must-buy per spec)
+    c4 = new CapCeramicDisc
+    c4.p1 ~ sd_vdd
+    c4.p2 ~ GND
+
+    # C5 -- 10uF bulk reservoir for card init inrush
+    c5 = new CapElyt5mm
+    c5.p1 ~ sd_vdd
+    c5.p2 ~ GND

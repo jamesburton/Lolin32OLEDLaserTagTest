@@ -1,0 +1,139 @@
+"""ESP32-S3-Matrix laser-tag carrier board.
+
+Authoritative circuit spec: ../../.docs/pcb-blocks.md
+Summary + BOM: ../../.docs/handoff.md ("Board BOM / discrete circuitry").
+
+Blocks: socketed ESP32-S3-Matrix (2x 1x10), MAX98357A audio (1x7), microSD (1x6),
+IR receiver (1x3), IR-TX transistor driver (2N2222A), power LED, hit-indicator LED,
+I2C OLED, external WS2812 out, GP2 role selector, 5V terminal-block input + caps.
+"""
+
+from "generics.ato" import PinSocket1x10, TerminalBlock2, ResistorTHT, CapElyt6_3mm, CapElyt5mm, LedTht5mm, SolderJumper2, PinHeader1x2, PinHeader1x3, TactileSwitch
+
+from "ir.ato" import IrBlock
+from "i2s_audio.ato" import AudioBlock
+from "microsd_spi.ato" import MicroSdBlock
+from "ws2812_out.ato" import Ws2812OutBlock
+from "i2c_oled.ato" import I2cOledBlock
+from "level_shifter.ato" import LevelShifterBoard
+
+
+module Carrier:
+    """Block 1 (parent sheet): module sockets, power in/decoupling, power LED,
+    GP2 role selector, and every child block. See pcb-blocks.md Block 1."""
+
+    # ---- Global rails -----------------------------------------------------
+    signal VCC5
+    signal VCC3V3
+    signal GND
+
+    # J0 -- 2-pin power input terminal block (D5)
+    j0 = new TerminalBlock2
+    j0.p1 ~ VCC5
+    j0.p2 ~ GND
+
+    # ---- J1/J2 -- ESP32-S3-Matrix module sockets ---------------------------
+    # J1 = left row (5V end), J2 = right row (GP33 end). Rows are 22.86mm
+    # (9 x 2.54mm) apart -- see layout notes / ESP32-S3-Matrix.md.
+    j1 = new PinSocket1x10
+    j2 = new PinSocket1x10
+
+    j1.p1 ~ VCC5      # 5V
+    j1.p2 ~ GND       # GND
+    j1.p3 ~ VCC3V3    # 3V3(OUT)
+    # j1.p4 = GP7 ACT_LED -- no carrier connection (Assumption #9: onboard-LED
+    # status on the Waveshare module is unconfirmed; DNP LED+resistor option
+    # not modelled here, see build report).
+    # j1.p5 = GP6 -> Ws2812OutBlock.ws_data
+    # j1.p6 = GP5 -> I2cOledBlock.i2c_scl
+    # j1.p7 = GP4 -> I2cOledBlock.i2c_sda
+    # j1.p8 = GP3 strapping pin -- no carrier connection
+    # j1.p9 = GP2 -> role selector (below)
+    # j1.p10 = GP1 -> IrBlock.ir_rx
+
+    # j2.p1..p4 = GP33..GP36 -> MicroSdBlock SCK/MOSI/MISO/CS
+    # j2.p5 = GP37 -> IrBlock.ir_tx
+    # j2.p6..p8 = GP38..GP40 -> AudioBlock BCLK/WS/DIN
+    # j2.p9/p10 = UART0 TX/RX (GP43/44) -- reserved console, no connection
+
+    # ---- C1/C2 -- bulk decoupling ------------------------------------------
+    c1 = new CapElyt6_3mm
+    c1.p1 ~ VCC5
+    c1.p2 ~ GND
+
+    c2 = new CapElyt5mm
+    c2.p1 ~ VCC3V3
+    c2.p2 ~ GND
+
+    # ---- D2/R7 -- always-populated power LED (D6) --------------------------
+    d2 = new LedTht5mm
+    r7 = new ResistorTHT
+    VCC5 ~ r7.p1
+    r7.p2 ~ d2.anode
+    d2.cathode ~ GND
+
+    # ---- GP2 role selector (Block 1(f), D11) -------------------------------
+    # Close AT MOST ONE of JP1 (Block 2, audio hard-mute) / JP4 (button) /
+    # JP5 (touch, recommended). Default: all open -> GP2 spare/test-point.
+    signal gp2
+    j1.p9 ~ gp2
+
+    jp4 = new SolderJumper2   # GP2 -> button role
+    jp5 = new SolderJumper2   # GP2 -> touch role
+    sw1 = new TactileSwitch
+    j12 = new PinHeader1x2    # external button, parallel with SW1
+    j13 = new PinHeader1x3    # touch header: SIG / VCC3V3 / GND
+
+    gp2 ~ jp4.a
+    gp2 ~ jp5.a
+    jp4.b ~ sw1.a
+    jp4.b ~ j12.p1
+    sw1.b ~ GND
+    j12.p2 ~ GND
+    jp5.b ~ j13.p1
+    j13.p2 ~ VCC3V3
+    j13.p3 ~ GND
+    # R8 (10k GP2 pull-up) and C12 (100nF debounce) intentionally DNP per
+    # spec (internal pull-up used by default) -- not instantiated here.
+
+    # ---- Child blocks -------------------------------------------------------
+    ir = new IrBlock
+    ir.VCC5 ~ VCC5
+    ir.VCC3V3 ~ VCC3V3
+    ir.GND ~ GND
+    ir.ir_rx ~ j1.p10
+    ir.ir_tx ~ j2.p5
+
+    audio = new AudioBlock
+    audio.VCC5 ~ VCC5
+    audio.GND ~ GND
+    audio.i2s_ws ~ j2.p7
+    audio.i2s_bclk ~ j2.p6
+    audio.i2s_din ~ j2.p8
+    audio.gp2 ~ gp2
+
+    sd = new MicroSdBlock
+    sd.VCC3V3 ~ VCC3V3
+    sd.GND ~ GND
+    sd.sd_sck ~ j2.p1
+    sd.sd_mosi ~ j2.p2
+    sd.sd_miso ~ j2.p3
+    sd.sd_cs ~ j2.p4
+
+    ws = new Ws2812OutBlock
+    ws.VCC5 ~ VCC5
+    ws.GND ~ GND
+    ws.ws_data ~ j1.p5
+
+    oled = new I2cOledBlock
+    oled.VCC3V3 ~ VCC3V3
+    oled.GND ~ GND
+    oled.i2c_sda ~ j1.p7
+    oled.i2c_scl ~ j1.p6
+
+    # Level-shifter is a standalone board (Block 7); its DATA in/out are
+    # off-board nets reached via cables to ws.j8 and to the strip -- left
+    # unconnected here on purpose (same treatment as SPK+/SPK-, Assumption #10).
+    levelshifter = new LevelShifterBoard
+    levelshifter.VCC5 ~ VCC5
+    levelshifter.GND ~ GND

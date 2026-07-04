@@ -1,0 +1,25 @@
+"""Block 6 -- i2c_oled_xh: I2C OLED/LCD connector (J9), Qwiic-style pinout
+(3V3/GND/SDA/SCL). Pull-ups R4/R5 intentionally DNP (Assumption #6).
+
+Ref: ../../.docs/pcb-blocks.md Block 6. SDA=GP4, SCL=GP5.
+
+STUB / ASSUMPTION: R4/R5 (4.7k I2C pull-ups) are NOT instantiated -- per
+spec they are always-DNP unless a bare OLED glass with no onboard pull-ups
+is used (not the expected case; typical SSD1306 breakouts already have
+4.7k pull-ups on-module). Fit externally if ever needed.
+"""
+
+from "generics.ato" import PinHeader1x4
+
+module I2cOledBlock:
+    signal VCC3V3
+    signal GND
+    signal i2c_sda   # from parent J1.7 / GP4
+    signal i2c_scl   # from parent J1.6 / GP5
+
+    # J9 -- Pin1=3V3, Pin2=GND, Pin3=SDA, Pin4=SCL
+    j9 = new PinHeader1x4
+    j9.p1 ~ VCC3V3
+    j9.p2 ~ GND
+    j9.p3 ~ i2c_sda
+    j9.p4 ~ i2c_scl

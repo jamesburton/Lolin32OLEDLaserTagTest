@@ -1,0 +1,222 @@
+"""Generic, non-LCSC-picked footprint stubs used across the carrier.
+
+These are `component` blocks (not auto-picked `Resistor`/`Capacitor`/etc.
+modules) so the whole design builds fully offline/deterministically: every
+part here gets its footprint pinned directly to a real KiCad footprint that
+ships with the local KiCad 10.0 install
+(C:/Program Files/KiCad/10.0/share/kicad/footprints), instead of depending on
+the JLCPCB/LCSC network picker. See ../../.docs/pcb-blocks.md for the
+authoritative value/footprint table this file mechanically implements.
+
+Every component below is a deliberate "generic/manual footprint" stub in the
+sense described in the task brief: sockets/headers/jumpers are inherently
+generic (no LCSC part makes sense for a socketed module), and the passives
+(R/C/LED/Q) are pinned to specific THT footprints + a `value` string for BOM
+/ silkscreen purposes rather than run through the auto-picker, so that a lack
+of network access (or JLCPCB not stocking a THT part) can never block the
+build. See the build report for the full stub/assumption log.
+"""
+
+# ---------------------------------------------------------------------------
+# Sockets (female) for socketed modules
+# ---------------------------------------------------------------------------
+
+component PinSocket1x10:
+    """2.54mm 1x10 female socket. Used 2x for the ESP32-S3-Matrix module (J1/J2)."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    signal p3 ~ pin 3
+    signal p4 ~ pin 4
+    signal p5 ~ pin 5
+    signal p6 ~ pin 6
+    signal p7 ~ pin 7
+    signal p8 ~ pin 8
+    signal p9 ~ pin 9
+    signal p10 ~ pin 10
+    designator_prefix = "J"
+    footprint = "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical"
+
+component PinSocket1x7:
+    """2.54mm 1x7 female socket. MAX98357A breakout (J3)."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    signal p3 ~ pin 3
+    signal p4 ~ pin 4
+    signal p5 ~ pin 5
+    signal p6 ~ pin 6
+    signal p7 ~ pin 7
+    designator_prefix = "J"
+    footprint = "Connector_PinSocket_2.54mm:PinSocket_1x07_P2.54mm_Vertical"
+
+component PinSocket1x6:
+    """2.54mm 1x6 female socket. microSD breakout (J5)."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    signal p3 ~ pin 3
+    signal p4 ~ pin 4
+    signal p5 ~ pin 5
+    signal p6 ~ pin 6
+    designator_prefix = "J"
+    footprint = "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical"
+
+# ---------------------------------------------------------------------------
+# Headers (male) for external/cable connectors
+# ---------------------------------------------------------------------------
+
+component PinHeader1x2:
+    """2.54mm 1x2 male header. Speaker/IR-LED/button external connectors."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    designator_prefix = "J"
+    footprint = "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
+
+component PinHeader1x3:
+    """2.54mm 1x3 male header. IR-RX / WS2812-out / level-shifter I/O / touch header."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    signal p3 ~ pin 3
+    designator_prefix = "J"
+    footprint = "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical"
+
+component PinHeader1x4:
+    """2.54mm 1x4 male header. I2C OLED connector (J9)."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    signal p3 ~ pin 3
+    signal p4 ~ pin 4
+    designator_prefix = "J"
+    footprint = "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
+
+# ---------------------------------------------------------------------------
+# Power input
+# ---------------------------------------------------------------------------
+
+component TerminalBlock2:
+    """2-pin 2.54mm screw terminal block. Power input J0."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    designator_prefix = "J"
+    footprint = "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MPT-0,5-2-2.54_1x02_P2.54mm_Horizontal"
+
+# ---------------------------------------------------------------------------
+# Solder jumpers (GP2 role selector, audio SD mute, audio gain, microSD LDO bypass)
+# ---------------------------------------------------------------------------
+
+component SolderJumper2:
+    """2-pad open solder jumper.
+
+    STUB: the stock KiCad 10 `Jumper:SolderJumper-2_P1.3mm_Open_*` footprints
+    all carry an `allow_soldermask_bridges` pad attribute that atopile
+    0.12.5's footprint parser (predates this KiCad 10 addition) rejects with
+    "Not a valid KiCad footprint file". Falling back to a locally patched
+    copy (footprints/LocalJumper.pretty/SolderJumper-2.kicad_mod, identical
+    geometry, that one attribute stripped) registered via
+    layouts/default/fp-lib-table. Re-point at the stock
+    `Jumper:SolderJumper-2_P1.3mm_Open_TrianglePad1.0x1.5mm` footprint once
+    atopile updates its KiCad-file-format support.
+    """
+    signal a ~ pin 1
+    signal b ~ pin 2
+    designator_prefix = "JP"
+    footprint = "LocalJumper:SolderJumper-2"
+
+component SolderJumper3:
+    """3-way open solder jumper strap (e.g. float/GND/VIN gain select).
+
+    STUB: same `allow_soldermask_bridges` parser incompatibility as
+    SolderJumper2 -- uses the locally patched
+    footprints/LocalJumper.pretty/SolderJumper-3.kicad_mod instead of the
+    stock `Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm`.
+    """
+    signal a ~ pin 1
+    signal common ~ pin 2
+    signal b ~ pin 3
+    designator_prefix = "JP"
+    footprint = "LocalJumper:SolderJumper-3"
+
+# ---------------------------------------------------------------------------
+# GP2 role selector switch
+# ---------------------------------------------------------------------------
+
+component TactileSwitch:
+    """6mm THT tactile push-button. Footprint has 2 electrical pads (1 and 2),
+    each duplicated on both diagonal legs."""
+    signal a ~ pin 1
+    signal b ~ pin 2
+    designator_prefix = "SW"
+    footprint = "Button_Switch_THT:SW_PUSH_6mm_H5mm"
+
+# ---------------------------------------------------------------------------
+# Passives (manual footprint + value, not auto-picked)
+# ---------------------------------------------------------------------------
+
+component ResistorTHT:
+    """Axial THT resistor, DIN0207 (~1/4W), value set via `value` string."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    designator_prefix = "R"
+    footprint = "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
+
+component CapCeramicDisc:
+    """100nF ceramic disc decoupling cap, THT."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    designator_prefix = "C"
+    footprint = "Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm"
+
+component CapElyt5mm:
+    """Small radial electrolytic, 5mm can (10uF class)."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    designator_prefix = "C"
+    footprint = "Capacitor_THT:CP_Radial_D5.0mm_P2.50mm"
+
+component CapElyt6_3mm:
+    """Radial electrolytic, 6.3mm can (100uF class)."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    designator_prefix = "C"
+    footprint = "Capacitor_THT:CP_Radial_D6.3mm_P2.50mm"
+
+component CapElyt10mm:
+    """Radial electrolytic, 10mm can (470uF/1000uF class)."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    designator_prefix = "C"
+    footprint = "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm"
+
+component LedTht5mm:
+    """5mm THT indicator LED. p1 = anode, p2 = cathode."""
+    signal anode ~ pin 1
+    signal cathode ~ pin 2
+    designator_prefix = "D"
+    footprint = "LED_THT:LED_D5.0mm"
+
+component NpnTo92:
+    """TO-92 NPN transistor, EBC pinout per 2N2222A/BC337-40/S8050 datasheets
+    (verify orientation against the specific manufacturer's datasheet before
+    soldering -- EBC vs CBE varies by manufacturer)."""
+    signal emitter ~ pin 1
+    signal base ~ pin 2
+    signal collector ~ pin 3
+    designator_prefix = "Q"
+    footprint = "Package_TO_SOT_THT:TO-92_Inline"
+
+component Soic14:
+    """Generic SOIC-14, 3.9x8.7mm, 1.27mm pitch. Used for 74AHCT125 (U1)."""
+    signal p1 ~ pin 1
+    signal p2 ~ pin 2
+    signal p3 ~ pin 3
+    signal p4 ~ pin 4
+    signal p5 ~ pin 5
+    signal p6 ~ pin 6
+    signal p7 ~ pin 7
+    signal p8 ~ pin 8
+    signal p9 ~ pin 9
+    signal p10 ~ pin 10
+    signal p11 ~ pin 11
+    signal p12 ~ pin 12
+    signal p13 ~ pin 13
+    signal p14 ~ pin 14
+    designator_prefix = "U"
+    footprint = "Package_SO:SOIC-14_3.9x8.7mm_P1.27mm"

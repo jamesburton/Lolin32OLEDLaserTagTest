@@ -1,0 +1,61 @@
+"""Block 7 -- level_shifter: standalone 74AHCT125 (U1) 3.3V->5V WS2812 DATA
+level-shifter board. Optional; input/output headers (J10/J11) connect to the
+carrier's J8 and to the strip via short cables (off-board nets, same
+treatment as Assumption #10 for SPK+/SPK-).
+
+Ref: ../../.docs/pcb-blocks.md Block 7.
+"""
+
+from "generics.ato" import PinHeader1x3, Soic14, ResistorTHT, CapCeramicDisc, CapElyt10mm
+
+module LevelShifterBoard:
+    signal VCC5
+    signal GND
+
+    # J10 -- input: 5V / DATA_IN(3V3, from carrier J8 via cable) / GND
+    j10 = new PinHeader1x3
+    # J11 -- output: 5V / DATA_OUT(5V, to strip via cable) / GND
+    j11 = new PinHeader1x3
+
+    signal data_in
+    signal data_buf
+    signal data_out
+
+    j10.p1 ~ VCC5
+    j10.p2 ~ data_in
+    j10.p3 ~ GND
+    j11.p1 ~ VCC5
+    j11.p3 ~ GND
+
+    u1 = new Soic14
+    # 74AHCT125 pin map -- only buffer 1 is used (see pcb-blocks.md Block 7b)
+    u1.p1 ~ GND       # /OE1, tied low -> buffer 1 always enabled
+    u1.p2 ~ data_in   # A1
+    u1.p3 ~ data_buf  # Y1
+    u1.p4 ~ VCC5      # /OE2 unused, tied high -> Hi-Z
+    u1.p5 ~ GND       # A2 unused, tied low (CMOS input must not float)
+    # p6 = Y2 unused -- left NC, safe (OE2 high -> Hi-Z)
+    u1.p7 ~ GND       # GND
+    # p8 = Y3 unused -- left NC
+    u1.p9 ~ GND       # A3 unused, tied low
+    u1.p10 ~ VCC5     # /OE3 unused, tied high
+    # p11 = Y4 unused -- left NC
+    u1.p12 ~ GND      # A4 unused, tied low
+    u1.p13 ~ VCC5     # /OE4 unused, tied high
+    u1.p14 ~ VCC5     # VCC
+
+    # R6 -- series resistor on DATA_OUT
+    r6 = new ResistorTHT
+    data_buf ~ r6.p1
+    r6.p2 ~ data_out
+    data_out ~ j11.p2
+
+    # C7 -- HF decoupling at U1 VCC/GND
+    c7 = new CapCeramicDisc
+    c7.p1 ~ VCC5
+    c7.p2 ~ GND
+
+    # C8 -- bulk reservoir at strip input (J11)
+    c8 = new CapElyt10mm
+    c8.p1 ~ VCC5
+    c8.p2 ~ GND
