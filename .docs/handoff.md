@@ -360,11 +360,27 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
         Python needed). Wire up in a follow-up: `make install` → point MCP client
         at its `.venv` python + `main.py`, set `KICAD_SEARCH_PATHS` in `.env`.
    3. Wokwi sim of the current S3 build (firmware + `diagram.json`) as the wiring
-      ground-truth before schematic capture.
-   4. Draft schematic (atopile `.ato` or KiCad) with **placeholder** microSD/IR-TX
-      pins; peripherals broken out as headers; each optional connector marked DNP.
-   5. **GATE:** freeze pins/peripherals (after #1 microSD + #5 IR TX) → then
-      placement, routing, DRC, fab export.
+      ground-truth before schematic capture. (Not yet done; `wokwi-cli` installed,
+      needs `WOKWI_CLI_TOKEN`.)
+   4. ✅ **DONE (2026-07-04): board authored in atopile & builds.** User chose
+      **atopile** (over the plain-KiCad lean) and it worked: project at
+      **`hardware/lasertag-carrier/`** (committed `8ce4e3f`). `ato build` compiles
+      the full carrier from `pcb-blocks.md` → KiCad-10 netlist + `.kicad_pcb`,
+      **37 components / 38 nets / 0 errors**, every part on a real KiCad footprint
+      (offline, no LCSC picker). Toolchain fully validated on this box; `ato build`
+      needs env `PYTHONUTF8=1 PYTHONIOENCODING=utf-8 NO_COLOR=1 ATO_NON_INTERACTIVE=1`
+      (else cp1252 emoji crash); the "KiCad plugin/config" warning is GUI-only,
+      **non-blocking**. **Caveats to fix (all point to atopile 0.12.5 being 3
+      versions behind 0.15.7 — upgrade in progress):** (a) designators render
+      `U1-U37`, real refdes preserved in each part's `atopile_address` property;
+      (b) `bom.csv` empty (footprint-only parts, not LCSC-picked) — full 37-line
+      BOM is in the build report; (c) two jumper footprints patched locally
+      (`footprints/LocalJumper.pretty`, KiCad-10 `allow_soldermask_bridges` unparsed
+      by 0.12.5).
+   5. **GATE (pins now FROZEN — microSD 33-36, IR-TX 37 both landed):** remaining
+      = open `default.kicad_pcb` in the KiCad GUI (launch KiCad once so atopile's
+      sync plugin hooks in) → placement, routing, DRC, fab export. This is the
+      manual, non-automatable step.
 
    Open questions: which KiCad MCP server is most reliable; atopile vs SKiDL vs
    raw KiCad once registry coverage is known; one board for both ESP32s or
