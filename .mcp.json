@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "kicad": {
+      "command": "C:\\Users\\james\\tools\\kicad-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\Users\\james\\tools\\kicad-mcp\\main.py"],
+      "env": {
+        "KICAD_APP_PATH": "C:\\Program Files\\KiCad\\10.0",
+        "PATH": "C:\\Program Files\\KiCad\\10.0\\bin;%PATH%",
+        "KICAD_SEARCH_PATHS": "c:\\Development\\PlatformIO\\Lolin32OLEDLaserTagTest\\hardware"
+      }
+    }
+  }
+}

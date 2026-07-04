@@ -81,10 +81,11 @@ Reuse the **existing hybrid pattern** — compile-time `BoardProfile` default + 
 whitelist + serial `cfg` + `/api` PATCH. Optional = **`-1` (absent)**, the codebase
 convention (NOT null).
 - **Shoot-back IR TX:** `BoardProfile.irTxPin` **already exists** (`-1`=absent).
-  Shoot-back is "enabled" exactly when `irTxPin` is set. S3 = add a real pin to the
-  S3 profile (currently -1) + extend the NVS/`cfg`/REST whitelist for `irTxPin`.
-  Reuse the proven `lib/IrTx` driver and the Lolin32 IR-TX circuit (it works today
-  on GPIO13).
+  Shoot-back is "enabled" exactly when `irTxPin` is set. S3 = `irTxPin` is now set
+  to **GP37** (flashed + tested, 2026-07-04) + extend the NVS/`cfg`/REST whitelist
+  for `irTxPin`. Reuse the proven `lib/IrTx` driver, but **not** the Lolin32
+  GPIO13/16 mA circuit as-is: the S3 carrier uses a higher-current **5V
+  2N2222A/33Ω driver (~105 mA)** for range instead.
 - **microSD SPI:** add `sdCsPin/sdMosiPin/sdMisoPin/sdSckPin` (`int8_t`, `-1`=absent)
   to `BoardProfile` (`hasSdCard` already exists), compile-time per board +
   NVS-overridable; extend the whitelist + `ConfigDoc` + `/api`.
@@ -118,37 +119,60 @@ Exposed-pad status:
 
 | Function | Pin | Notes |
 |---|---|---|
-| IR TX (shoot-back) | **GP2** | left row, next to GP1 IR RX → one IR connector corner |
+| IR TX (shoot-back) | **GP37** (was GP2 — moved 2026-07-04, flashed + tested on hardware) | right-row block, GP33-36 adjacent; freed GP2 |
 | microSD SCK | **GP33** | right-row block GP33–36, adjacent → clean corner connector |
 | microSD MOSI (DI) | **GP34** | |
 | microSD MISO (DO) | **GP35** | |
 | microSD CS | **GP36** | |
 
 Allocated to **optional connectors** (per the block spec): **GP4=I2C SDA, GP5=I2C SCL**
-(OLED/sensors), **GP6=external WS2812 DATA**. True spare: **GP37** (+ GP43/44 if UART0
-is sacrificed; GP3 strapping — avoid). microSD card is 3.3V — feed the socket from
-**3V3(OUT)** (a bare socket needs no level shift; a breakout with onboard regulator
-wants 5V). MAX98357A VIN = 5V. **IR RX VCC = 3V3** (GP1 is 3.3V-max — never 5V).
+(OLED/sensors), **GP6=external WS2812 DATA**. **GP37 is now IR TX** (moved from GP2,
+2026-07-04). This frees **GP2**, exposed as a **role selector** (default none →
+spare/test-point; recommended touch sensor; alternatives button or audio SD
+hard-mute) — one role per build via solder-jumper; see `pcb-blocks.md` Block 1 (f).
+The board is otherwise fully packed: no other true spare pins remain (GP43/44 if
+UART0 is sacrificed; GP3 strapping — avoid). microSD card is 3.3V — feed the socket
+from **3V3(OUT)** (a bare socket needs no level shift; a breakout with onboard
+regulator wants 5V). MAX98357A VIN = 5V. **IR RX VCC = 3V3** (GP1 is 3.3V-max — never 5V).
 
 ## Connectors (decided)
 - **Female 2.54mm sockets:** ESP32-S3-Matrix module (**2×10, rows 22.86mm/0.9″
   apart**), MAX98357A module (**1×7**: LRC, BCLK, DIN, GAIN, SD, GND, VIN), external
   LCD. All on a standard 0.1″ grid → the carrier can be perfboard-prototyped first.
-- **JST-XH** for everything smaller (IR LED, speaker, external WS2812 strip data,
-  I2C OLED/LCD + future I2C sensors) — **one connector family** to stock.
-- **IR receiver:** 3-pin (OUT / VCC / GND, 2.54mm) pads at the **top edge** — a header
-  for a module, but usually direct-soldered. Same "direct-solder *or* header" approach
-  for discrete LEDs (THT holes + standard through-hole resistor) and any local R/C/diode.
+- **0.1″ (2.54mm) pin headers/sockets** for everything smaller (IR LED, speaker,
+  external WS2812 strip data, I2C OLED/LCD + future I2C sensors) — **updated
+  2026-07-04: standardised on 0.1″ headers, not JST-XH** — one connector family
+  to stock, no separate JST-XH part numbers needed.
+- **microSD:** primary is now a **6-pin 0.1″ female socket** (pin order
+  3V3·CS·MOSI·CLK·MISO·GND) for an external breakout module; the direct-solder
+  push-push socket is demoted to an alternative footprint-swap option.
+- **Power input:** a 2-pin 0.1″ (or 5.08mm) terminal block feeding the VCC5/GND
+  rails; the power switch and any battery/charger circuitry are off-board, upstream
+  of this connector.
+- **Power LED:** always-populated LED + 330Ω series resistor across
+  VCC5(switched)/GND — not an optional/DNP block.
+- **IR receiver:** 3-pin (OUT / GND / VCC, 2.54mm — pin order updated 2026-07-04 to
+  match the project KB and on-hand parts; verify per module) pads at the **top
+  edge** — a header for a module, but usually direct-soldered. Same "direct-solder
+  *or* header" approach for discrete LEDs (THT holes + standard through-hole
+  resistor) and any local R/C/diode.
 - Each optional connector marked **DNP** so a board can be populated only as needed.
 - **Footprints:** standard through-hole sizing for discrete R (axial), C (radial), and
   diodes — soldered directly; SMD only where space demands.
 
 ## Passives (from the on-hand stash, where they help)
-On hand: **220Ω** resistors, **0.47µF–1000µF** caps.
+On hand: **220Ω** resistors, **0.47µF–1000µF** caps. As of 2026-07-04 the user has
+also ordered a resistor pack covering **33Ω / 220Ω / 330Ω / 470Ω / 1kΩ**, etc.
 - **WS2812 (onboard + external strip):** 220Ω series on the data line at the first
   pixel; **1000µF** bulk across 5V/GND at the strip input. Both textbook, both in kit.
 - **MAX98357A:** bulk cap on VIN (100–470µF) for Class-D current spikes.
-- **microSD:** 100nF decoupling on VCC; optional small series R on SPI lines.
+- **microSD:** 100nF decoupling on VCC; optional small series R on SPI lines; an
+  optional dedicated 3V3 LDO (AP2112-3.3 / MCP1826 / AMS1117-3.3, with 10µF in/out
+  caps) can feed the socket instead of the onboard VCC3V3 rail for durability.
+- **IR TX driver (updated 2026-07-04):** **33Ω** LED series resistor (from VCC5) and
+  **470Ω** base resistor, replacing the earlier 220Ω/220Ω pair — see IR TX circuit
+  note above (~105 mA, 2N2222A).
+- **Power LED:** **330Ω** series resistor (up to 1kΩ acceptable), always populated.
 - **GAP — buy:** standard **100nF (0.1µF)** per-IC decoupling caps (smallest on hand
   is 0.47µF, which is bulk-ish, not a high-freq decoupling substitute). One cheap
   strip of 100nF ceramics is the single most useful addition.
@@ -175,13 +199,14 @@ KiCad has stock footprints/symbols for all of these; LCSC numbers are for orderi
 |---|---|---|
 | MAX98357A I2S amp | C2682727 | (module on female header — or `Package_TO_SOT`/TDFN if bare) |
 | WS2812B 5050 | C2761795 | `LED_WS2812B_5050` (onboard matrix is internal; this = external) |
-| JST-XH 2P / 3P / 4P | C158012 / C144394 / C144395 | `Connector_JST:JST_XH_B*B-XH-A` |
+| 0.1″ pin headers 1×2/1×3/1×4 (2026-07-04: replaced JST-XH) | — | `Connector_PinHeader_2.54mm:PinHeader_1x0N_P2.54mm_Vertical` |
 | 74AHCT125 (3.3→5V buffer) | C7466 | `Package_SO:SOIC-14` (level-shifter board) |
 | SSD1306 128×64 OLED | C5261074 | external module on XH/header |
 | ESP32-S3-Matrix module | n/a | 2× `PinSocket_1x10_P2.54mm` (female) |
 
 ## Open / next
-1. ✅ **Pad list confirmed** — pins frozen (IR TX GP2; microSD GP33-36).
+1. ✅ **Pad list confirmed** — pins frozen (IR TX **GP2 → GP37, validated** on
+   hardware 2026-07-04; microSD GP33-36).
 2. ✅ **Registry check** — atopile thin (5/7 non-passive parts absent) → **plain
    KiCad primary** + KiCad MCP; SKiDL optional code route; atopile parked.
 3. KiCad **v10 installed** ✅. Automation decided (#1): schematic via `kicad-skip`/

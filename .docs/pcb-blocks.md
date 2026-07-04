@@ -9,6 +9,52 @@ pin-to-pin tables. KiCad file generation should be mechanical from these tables.
 
 ---
 
+## RECONCILED 2026-07-04
+
+Hardware bring-up since 2026-06-28 produced the following agreed decisions. These
+**supersede** any conflicting row/table/text below; where this section and a later
+table disagree, this section wins.
+
+- **D1.** IR TX pin moved **GP2 → GP37** (flashed + tested; committed in `BoardProfile`). Frees GP2.
+- **D2.** IR TX driver changed: transistor **S8050 → 2N2222A** (TO-92; BC337-40/S8050
+  are equivalents); LED series resistor **220Ω → 33Ω** from **5V** (VCC5); base
+  resistor **220Ω → 470Ω** (GP37 → base). New operating point: I_LED ≈ **105 mA**
+  (was ~16 mA); I_base ≈ 5.5 mA, hFE ≥ 100 → saturated. A **22Ω** option gives ~150 mA
+  if more range is needed.
+- **D3.** All JST-XH connectors become **0.1″ (2.54 mm) pin headers/sockets**.
+  Affects speaker (J4), IR LED (J7), WS2812-out (J8), OLED (J9), level-shifter I/O
+  (J10/J11). JST-XH LCSC part numbers (C158012/C144394/C144395) are removed for these.
+- **D4.** microSD primary connector is now a **6-pin 0.1″ female socket** for a
+  breakout module (pin order **3V3·CS·MOSI·CLK·MISO·GND**); the push-push socket is
+  demoted to "alternative". Net names unchanged.
+- **D5.** ADD a power input: 2-pin terminal block **J0** feeding **VCC5/GND**. The
+  module's 5V pin (parent J1.1) is powered FROM VCC5. Power switch + optional
+  battery/charger are off-board, upstream of J0.
+- **D6.** ADD an always-populated power LED: **D2** + series **R7 = 330Ω** (default;
+  may fit up to 1kΩ) across VCC5(switched)/GND. NOT DNP.
+- **D7.** Audio SD (shutdown) pin: add solder-jumper **JP1** — default open leaves SD
+  floating (amp enabled) and keeps **GP2** free as spare/test-point; closing JP1
+  routes GP2 → SD for a firmware hard-mute (future option). Parent J1 pin-9/GP2 net
+  = `AUDIO_SD` via JP1; audio sheet J3 pin-5 connects to that net.
+- **D8.** Audio GAIN pin: add optional 3-way strap jumper **JP2** — float = 9 dB
+  (default) / GND = 15 dB / VIN = 3 dB. Volume is done in software; no runtime control.
+- **D9.** microSD supply durability: ADD optional **U5** = 3V3 LDO from VCC5
+  (AP2112-3.3 / MCP1826 / AMS1117-3.3) with 10 µF in + 10 µF out caps, and bypass
+  solder-jumper **JP3**: default routes SD VDD from onboard VCC3V3 (U5 DNP);
+  populating U5 + moving JP3 sources SD VDD from U5's output. C4/C5 at the socket
+  unchanged.
+- **D10.** IR RX (J6) pin order set to **OUT·GND·VCC** (matches project KB and
+  on-hand parts) — verify per module. Reference part = **HS0038(B)** (best
+  ambient-light rejection); VS1738/VS1838B/LF1638B also on hand (all 38 kHz).
+- **D11.** GP2 becomes a **role selector** (supersedes the JP1-only view in D7): a
+  solder-jumper bank picks **one** GP2 role per build — **default none** (spare/
+  test-point), **recommended touch sensor** (JP5, 3-pin SIG/VCC3V3/GND header),
+  or the alternatives **button** (JP4, on-board micro-switch SW1 + external 2-pin
+  header J12) and **audio hard-mute** (JP1, Block 2). Close **at most one** of
+  JP1/JP4/JP5. See Block 1 (f).
+
+---
+
 ## Conventions
 
 ### Power rails (global, cross all sheets)
@@ -32,10 +78,13 @@ symbol). Net names are listed below with each block.
 
 | Prefix | Usage |
 |--------|-------|
+| J0     | Power input (parent) |
 | J1–J2  | Module sockets (parent) |
 | C1–C2  | Parent-sheet decoupling |
-| J3–J4, C3 | `i2s_audio` sheet |
-| J5, C4–C5 | `microsd_spi` sheet |
+| D2, R7 | Power LED + series resistor (parent) |
+| SW1, J12–J13, JP4–JP5, R8, C12 | GP2 role selector (parent) |
+| J3–J4, C3, JP1–JP2 | `i2s_audio` sheet |
+| J5, C4–C5, U5, C10–C11, JP3 | `microsd_spi` sheet |
 | J6–J7, R1–R2, Q1, C9 | `ir` sheet |
 | J8, R3, C6 | `ws2812_out` sheet |
 | J9, R4–R5 | `i2c_oled_xh` sheet |
@@ -57,10 +106,13 @@ to child sheets.
 
 | Ref | Part | Value / Spec | KiCad Footprint | LCSC | Notes |
 |-----|------|-------------|-----------------|------|-------|
+| J0  | Terminal block, 2-pin | 2.54 mm or 5.08 mm | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MPT-0,5-2-2.54_1x02` | — | Power input (D5); feeds VCC5/GND. Switch + optional battery/charger are off-board, upstream of J0 |
 | J1  | PinSocket 1×10 | 2.54 mm pitch | `Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical` | — | Left module row |
 | J2  | PinSocket 1×10 | 2.54 mm pitch | `Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical` | — | Right module row, 22.86 mm from J1 centre-to-centre |
 | C1  | Electrolytic cap | 100 µF / 10 V | `Capacitor_THT:CP_Radial_D6.3mm_P2.50mm` | — | Bulk decoupling, VCC5 |
 | C2  | Electrolytic cap | 10 µF / 10 V  | `Capacitor_THT:CP_Radial_D5mm_P2.50mm`   | — | Bulk decoupling, VCC3V3 |
+| D2  | LED, 3 mm/5 mm THT | Power indicator | `LED_THT:LED_D5.0mm` | — | Always-populated power LED (D6), VCC5(switched)/GND |
+| R7  | Resistor, axial | 330 Ω (default; up to 1 kΩ acceptable) | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | — | D2 series resistor (D6) |
 
 **Placement note:** J1 and J2 are separated by **22.86 mm (9 × 2.54 mm) between row
 centres** — a whole number of 0.1″ grid steps, matching the module. Place J1 left
@@ -80,7 +132,7 @@ of J2 as viewed from above.
 | 6 | GP5 | `I2C_SCL` | Hierarchical pin → `i2c_oled_xh` sheet |
 | 7 | GP4 | `I2C_SDA` | Hierarchical pin → `i2c_oled_xh` sheet |
 | 8 | GP3 | `GP3_STRAP` | No connection (strapping pin; tie low only via module's own resistors) |
-| 9 | GP2 | `IR_TX` | Hierarchical pin → `ir` sheet |
+| 9 | GP2 | `GP2` | **GP2 role selector — see (f)** (D11). Default: unconnected spare/test-point. Close ONE jumper: touch (JP5, recommended) / button (JP4) / audio SD hard-mute (JP1 → `i2s_audio`) |
 | 10 | GP1 | `IR_RX` | Hierarchical pin → `ir` sheet |
 
 #### J2 — Right row (pin 1 = top/GP33 end as installed)
@@ -91,7 +143,7 @@ of J2 as viewed from above.
 | 2 | GP34 | `SD_MOSI` | Hierarchical pin → `microsd_spi` sheet |
 | 3 | GP35 | `SD_MISO` | Hierarchical pin → `microsd_spi` sheet |
 | 4 | GP36 | `SD_CS`   | Hierarchical pin → `microsd_spi` sheet |
-| 5 | GP37 | `GP37_SPARE` | No connection (test point recommended; only true spare after all optional blocks populated) |
+| 5 | GP37 | `IR_TX` | Hierarchical pin → `ir` sheet (D1: IR TX moved here from GP2, flashed + tested on hardware) |
 | 6 | GP38 | `I2S_BCLK` | Hierarchical pin → `i2s_audio` sheet |
 | 7 | GP39 | `I2S_WS`   | Hierarchical pin → `i2s_audio` sheet |
 | 8 | GP40 | `I2S_DIN`  | Hierarchical pin → `i2s_audio` sheet |
@@ -101,8 +153,14 @@ of J2 as viewed from above.
 ### (c) External connector
 
 The module itself is the "external connector" for this sheet. J1 and J2 are female
-sockets; the ESP32-S3-Matrix module pins plug in. No additional external connector
-on the parent sheet.
+sockets; the ESP32-S3-Matrix module pins plug in. J0 (D5) is the board's external
+power-input connector: a 2-pin terminal block feeding VCC5/GND. The power switch and
+any battery/charger circuitry are off-board, upstream of J0.
+
+| J0 Pin | Net | Description |
+|--------|-----|-------------|
+| 1 | `VCC5` | +5 V in |
+| 2 | `GND`  | Return |
 
 ### (d) Passives and why
 
@@ -110,28 +168,73 @@ on the parent sheet.
 |-----|-------|------|--------|
 | C1 | 100 µF / 10 V electrolytic | VCC5 / GND | Bulk bypass at the 5 V entry point before distributing to MAX98357A, WS2812 strip, IR LED circuit |
 | C2 | 10 µF / 10 V electrolytic | VCC3V3 / GND | Bulk bypass at the 3.3 V out before distributing to microSD, IR RX, I2C |
+| R7 | 330 Ω (D6; up to 1 kΩ acceptable) | VCC5(switched) / GND | Power-LED series resistor for D2 |
 
-Both use values from on-hand stock.
+Both C1/C2 use values from on-hand stock. D2 + R7 are always populated (D6) — the
+power LED is not an optional block.
 
 ### (e) DNP / optional
 
 All child sheet hierarchical sheet symbols on the parent are themselves optional
-(blocks 2–6); their connectors carry the individual DNP flags. C1 and C2 are always
-populated.
+(blocks 2–6); their connectors carry the individual DNP flags. C1, C2, J0, D2, and
+R7 are always populated (D5, D6) — power input and the power LED are not optional.
+
+### (f) GP2 role selector (variant option — pick one per build) (D11)
+
+GP2 (parent J1.9) is the board's only slack pin, routed to a small solder-jumper
+selector so each build picks **one** GP2 role. **Close at most one** of JP1/JP4/JP5.
+
+| Ref | Part | Value / Spec | KiCad Footprint | Notes |
+|-----|------|-------------|-----------------|-------|
+| SW1 | Tactile micro-switch, THT | 6 mm | `Button_Switch_THT:SW_PUSH_6mm_H5mm` | On-board button (JP4); GP2 → SW1 → GND |
+| J12 | Pin header 1×2 | 2.54 mm | `Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical` | External button, parallel with SW1 |
+| J13 | Pin header 1×3 | 2.54 mm | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | Touch-sensor header: **SIG / VCC3V3 / GND** |
+| JP4 | Solder jumper, 2-pad | open default | `Jumper:SolderJumper-2_P1.3mm_Open_TrianglePad1.0x1.5mm` | Selects GP2 → button (SW1/J12) |
+| JP5 | Solder jumper, 2-pad | open default | `Jumper:SolderJumper-2_P1.3mm_Open_TrianglePad1.0x1.5mm` | Selects GP2 → touch SIG (J13.1) |
+| R8 | Resistor, axial | 10 kΩ | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | **DNP** — GP2 pull-up (internal pull-up used by default) |
+| C12 | Ceramic cap | 100 nF | `Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm` | **DNP** — button debounce (GP2→GND) |
+
+**Roles (default = none):**
+- **None (default):** JP1/JP4/JP5 all open → GP2 is an unconnected spare/test-point.
+- **Touch sensor (recommended):** close **JP5** → GP2 = SIG from J13. Compatible with
+  TTP223-style modules; **VCC must be 3V3** (5 V would push SIG past GP2's 3.3 V max).
+  GP2 is read as a digital input.
+- **Button (alternative):** close **JP4** → GP2 → SW1 (and parallel external button
+  on J12) → GND, read with the internal pull-up. Optional R8/C12 for hw pull-up/debounce.
+- **Audio hard-mute (alternative):** close **JP1** (Block 2) → GP2 drives MAX98357A SD
+  low at idle. See Block 2 / Assumption #5.
+
+Net table:
+
+| Net | From | To |
+|-----|------|----|
+| `GP2` | Hier. pin (parent J1.9) | JP1.a, JP4.a, JP5.a, R8.2, C12.1 |
+| `GP2_BTN` | JP4.b | SW1.1, J12.1 |
+| `GP2_TOUCH` | JP5.b | J13.1 (SIG) |
+| `AUDIO_SD` | JP1.b | Block 2 J3.5 |
+| `VCC3V3` | Global | J13.2, R8.1 |
+| `GND` | Global | SW1.2, J12.2, J13.3, C12.2 |
+
+**Firmware:** GP2's role becomes a `BoardProfile` field later (button read+debounce /
+touch read / SD-mute drive) — no board impact now, only pads + jumpers. Silk:
+"GP2 role — close ONE (default none; recommended touch)."
 
 ---
 
 ## Block 2 — `i2s_audio`
 
-MAX98357A I2S amplifier module on a 1×7 female socket; speaker via JST-XH.
+MAX98357A I2S amplifier module on a 1×7 female socket; speaker via a 0.1″ pin
+header (D3 — was JST-XH).
 
 ### (a) Components
 
 | Ref | Part | Value / Spec | KiCad Footprint | LCSC | Notes |
 |-----|------|-------------|-----------------|------|-------|
 | J3 | PinSocket 1×7 | 2.54 mm pitch | `Connector_PinSocket_2.54mm:PinSocket_1x07_P2.54mm_Vertical` | — | Accepts MAX98357A module header |
-| J4 | JST-XH 2-pin | — | `Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical` | C158012 | Speaker output |
+| J4 | Pin header 1×2 | 2.54 mm pitch | `Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical` | — | Speaker output (D3: was JST-XH B2B-XH-A 1x02 / C158012) |
 | C3 | Electrolytic cap | 470 µF / 10 V | `Capacitor_THT:CP_Radial_D10mm_P5.00mm` | — | VIN bulk cap (Class-D spike suppression) |
+| JP1 | Solder jumper | 2-pad, open by default | `Jumper:SolderJumper-2_P1.3mm_Open_TrianglePad1.0x1.5mm` | — | GP2 → SD hard-mute (D7); default OPEN leaves SD floating (amp enabled) and GP2 free as spare/test-point |
+| JP2 | Solder jumper, 3-way | float/GND/VIN strap | `Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm` | — | GAIN strap (D8): float = 9 dB (default) / GND = 15 dB / VIN = 3 dB |
 
 ### (b) Net connections
 
@@ -142,8 +245,8 @@ MAX98357A module 1×7 header pinout (left-to-right as labelled on the module PCB
 | 1 | LRC (Word Select) | `I2S_WS` | From parent J2.7 / GP39 |
 | 2 | BCLK (Bit Clock)  | `I2S_BCLK` | From parent J2.6 / GP38 |
 | 3 | DIN (Serial Data) | `I2S_DIN` | From parent J2.8 / GP40 |
-| 4 | GAIN | `AUDIO_GAIN` | NC on carrier — left to module default (floating = 9 dB; pull to GND for 12 dB; see MAX98357A datasheet) |
-| 5 | SD (Shutdown) | `AUDIO_SD` | NC on carrier — module's internal 100 kΩ pull-up to VIN holds HIGH → amp always enabled |
+| 4 | GAIN | `AUDIO_GAIN` | Via JP2 (D8), 3-way strap: float (default, JP2 open) = 9 dB / GND = 15 dB / VIN = 3 dB. Volume is controlled in software; JP2 is a build-time gain choice, not a runtime control. |
+| 5 | SD (Shutdown) | `AUDIO_SD` | Via JP1 (D7) to parent J1.9 / GP2. Default JP1 open → SD floats HIGH (module's internal 100 kΩ pull-up to VIN) → amp always enabled, GP2 free as spare/test-point. Closing JP1 wires GP2 to SD for a firmware hard-mute (future option). |
 | 6 | GND | `GND` | Global GND |
 | 7 | VIN | `VCC5` | Global VCC5; C3 spans VCC5/GND at J3.7/J3.6 |
 
@@ -165,8 +268,8 @@ Full net table:
 | `I2S_WS` | Hier. pin (parent J2.7) | J3.1 |
 | `I2S_BCLK` | Hier. pin (parent J2.6) | J3.2 |
 | `I2S_DIN` | Hier. pin (parent J2.8) | J3.3 |
-| `AUDIO_GAIN` | J3.4 | NC |
-| `AUDIO_SD` | J3.5 | NC |
+| `AUDIO_GAIN` | J3.4 | JP2 common; strap to float/GND/VIN |
+| `AUDIO_SD` | J3.5 | JP1 → hier. pin (parent J1.9 / GP2), default open |
 | `GND` | J3.6 | GND; C3 − |
 | `VCC5` | J3.7 | VCC5; C3 + |
 | `SPK_P` | J4.1 | Wire to module SPK+ |
@@ -174,7 +277,7 @@ Full net table:
 
 ### (c) External connector
 
-J4 (JST-XH 2-pin) — speaker. Pin 1 = SPK+, Pin 2 = SPK−. Polarity is
+J4 (pin header 1×2, 2.54 mm — D3) — speaker. Pin 1 = SPK+, Pin 2 = SPK−. Polarity is
 speaker-amplifier convention (no fixed polarity for dynamic speakers, but keep
 consistent with the MAX98357A module's pad labels).
 
@@ -183,74 +286,91 @@ consistent with the MAX98357A module's pad labels).
 | Ref | Value | Rail | Reason |
 |-----|-------|------|--------|
 | C3 | 470 µF / 10 V electrolytic | VCC5 / GND at J3.7 | MAX98357A is a Class-D amp; switching spikes 100–400 mA. A bulk cap directly at VIN suppresses rail droop. 470 µF is in-stock and sufficient; 100 µF is the minimum recommended. Place as close to J3.7 as possible. |
+| JP1 | Solder jumper | GP2 ↔ AUDIO_SD | Default open (D7): SD floats HIGH, GP2 stays a free spare/test-point. Close only to wire GP2 to SD for a firmware hard-mute. |
+| JP2 | Solder jumper, 3-way | AUDIO_GAIN strap | Build-time gain select (D8): float = 9 dB (default) / GND = 15 dB / VIN = 3 dB. |
 
 ### (e) DNP / optional
 
 J3, J4, C3 are all DNP if audio is not fitted. Mark J3 and J4 both DNP.
-GAIN and SD pins (J3.4/J3.5) are NC; no carrier-side passive needed.
+JP1 is present whenever J3 is fitted (default left open); JP2 is present whenever
+J3 is fitted (default left floating = 9 dB).
 
 ---
 
 ## Block 3 — `microsd_spi`
 
-microSD card in SPI mode on GP33–36, powered from VCC3V3. Primary footprint is
-a direct-solder push-push microSD socket; a JST-XH 6-pin breakout header is the
-alternative if an external breakout module is preferred (footprint-swap, same nets).
+microSD card in SPI mode on GP33–36. Primary footprint is now a **6-pin 0.1″
+female socket** for an external breakout module (D4); the direct-solder push-push
+microSD socket is demoted to "alternative" (footprint-swap, same nets). Supply is
+VCC3V3 by default, with an optional dedicated 3V3 LDO (U5, D9) for durability.
 
 ### (a) Components
 
 | Ref | Part | Value / Spec | KiCad Footprint | LCSC | Notes |
 |-----|------|-------------|-----------------|------|-------|
-| J5 | microSD push-push socket | 9-pin + 2-pin CD | `Connector_Card:microSD_HC_Hirose_DM3AT-SF-PEJM5` (or `Connector_Card:microSD_HC_Wuerth_693072010801`) | TBD — not in pcb-design.md table | Primary; **buy** |
+| J5 | PinSocket 1×6 | 2.54 mm pitch | `Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical` | — | **Primary (D4)** — breakout module socket. Pin order: 3V3·CS·MOSI·CLK·MISO·GND |
 | C4 | Ceramic cap | 100 nF / 10 V | `Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm` | — | **BUY** — smallest on-hand (0.47 µF) is too large for high-freq VCC decoupling |
 | C5 | Electrolytic cap | 10 µF / 10 V | `Capacitor_THT:CP_Radial_D5mm_P2.50mm` | — | Bulk bypass, in-stock |
+| U5 | LDO regulator, 3.3 V | AP2112-3.3 / MCP1826 / AMS1117-3.3 | SOT-23-5 (AP2112) or SOT-223 (MCP1826/AMS1117), per chosen part | TBD | **Optional (D9)** — dedicated 3V3 rail for the microSD socket, sourced from VCC5. DNP by default. |
+| C10 | Ceramic cap | 10 µF | `Capacitor_THT:CP_Radial_D5mm_P2.50mm` or 0805 SMD, per U5 footprint | — | U5 input cap. DNP unless U5 fitted. |
+| C11 | Ceramic cap | 10 µF | Same as C10 | — | U5 output cap. DNP unless U5 fitted. |
+| JP3 | Solder jumper | 2-way, default routes to VCC3V3 | `Jumper:SolderJumper-2_P1.3mm_Open_TrianglePad1.0x1.5mm` (or 3-way select, per layout) | — | **Bypass jumper (D9):** default sources SD VDD from onboard VCC3V3 (U5 DNP); move to source from U5's output when U5 is fitted |
 
-**Breakout alternative:** substitute J5 with JST-XH 6-pin (`Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical`; LCSC part TBD — not in the 2P/3P/4P table) wired CS/MOSI/MISO/SCK/VCC/GND. Same net names.
+**Alternative footprint (demoted, D4):** direct-solder push-push microSD socket,
+`Connector_Card:microSD_HC_Hirose_DM3AT-SF-PEJM5` (or
+`Connector_Card:microSD_HC_Wuerth_693072010801`), 9-pin + 2-pin CD, LCSC TBD.
+Same net names; footprint-swap only.
 
 ### (b) Net connections
 
-microSD card SPI-mode pin mapping. Pad names below are the card-contact function
-names (same across all microSD sockets); exact pad numbers reconcile to the chosen
-footprint's datasheet (Hirose DM3AT-SF-PEJM5 or equivalent — **check pad order
-before routing**).
+J5 6-pin breakout-socket pin order (D4): **3V3 · CS · MOSI · CLK · MISO · GND**.
 
-| Card pad (function) | Card Signal (SPI mode) | Net | From (carrier hier. pin) |
-|---------------------|----------------------|-----|--------------------------|
-| DAT3 / CS | Chip Select | `SD_CS` | Parent J2.4 / GP36 |
-| CMD / DI | MOSI | `SD_MOSI` | Parent J2.2 / GP34 |
-| VSS (×2) | Ground | `GND` | Global GND |
-| VDD | Supply | `VCC3V3` | Global VCC3V3; C4 +, C5 + |
-| CLK | SCK | `SD_SCK` | Parent J2.1 / GP33 |
-| DAT0 / DO | MISO | `SD_MISO` | Parent J2.3 / GP35 |
-| DAT1 | NC | NC | SPI mode; card has internal pull-up |
-| DAT2 | NC | NC | SPI mode; card has internal pull-up |
-| CD / DET | Card detect A | NC | Optional: wire to GP37_SPARE for hot-swap; NC if unused |
-| CD GND | Card detect B | `GND` | Only relevant if CD switch is wired |
+| J5 Pin | Signal | Net | From (carrier hier. pin) |
+|--------|--------|-----|--------------------------|
+| 1 | 3V3 | `SD_VDD` | Via JP3: default from `VCC3V3` (U5 DNP); or from U5 output when fitted. C4 +, C5 + |
+| 2 | CS | `SD_CS` | Parent J2.4 / GP36 |
+| 3 | MOSI | `SD_MOSI` | Parent J2.2 / GP34 |
+| 4 | CLK | `SD_SCK` | Parent J2.1 / GP33 |
+| 5 | MISO | `SD_MISO` | Parent J2.3 / GP35 |
+| 6 | GND | `GND` | Global GND; C4 −, C5 − |
 
-Full net table (use the function-name column above to map pad numbers once the
-footprint is confirmed):
+**Alternative (push-push socket, demoted):** card-contact function names (DAT3/CS,
+CMD/DI, VSS×2, VDD, CLK, DAT0/DO, DAT1 NC, DAT2 NC, CD/DET NC, CD GND) map to the
+same `SD_CS`/`SD_MOSI`/`GND`/`SD_VDD`/`SD_SCK`/`SD_MISO` nets; exact pad numbers
+reconcile to the chosen footprint's datasheet — **check pad order before routing**.
+Card-detect (CD/DET) has no free GPIO to wire to now that GP37 is claimed by IR TX
+(D1); leave NC if the push-push variant with CD is ever used.
+
+Full net table:
 
 | Net | From | To |
 |-----|------|----|
-| `SD_CS`   | Hier. pin (parent J2.4) | J5 DAT3/CS pad |
-| `SD_MOSI` | Hier. pin (parent J2.2) | J5 CMD/DI pad |
-| `GND`     | Global | J5 VSS pads; C4 −; C5 − |
-| `VCC3V3`  | Global | J5 VDD pad; C4 +; C5 + |
-| `SD_SCK`  | Hier. pin (parent J2.1) | J5 CLK pad |
-| `SD_MISO` | Hier. pin (parent J2.3) | J5 DAT0/DO pad |
+| `SD_CS`   | Hier. pin (parent J2.4) | J5 pin 2 |
+| `SD_MOSI` | Hier. pin (parent J2.2) | J5 pin 3 |
+| `GND`     | Global | J5 pin 6; C4 −; C5 −; U5 GND (if fitted) |
+| `SD_VDD`  | JP3 (default: `VCC3V3`; alt: U5 output) | J5 pin 1; C4 +; C5 + |
+| `SD_SCK`  | Hier. pin (parent J2.1) | J5 pin 4 |
+| `SD_MISO` | Hier. pin (parent J2.3) | J5 pin 5 |
+| `VCC5`    | Global | U5 input (if fitted); C10 + |
+| `VCC3V3`  | Global | JP3 default leg |
 
 ### (c) External connector
 
-J5 is the microSD card socket itself (the card is the "external" connector).
-If the breakout-module variant is used, J5 becomes a 6-pin JST-XH and the
-breakout board's SPI pins (CS/MOSI/MISO/SCK) map 1:1.
+J5 is now the 6-pin 0.1″ female socket for the breakout module (primary, D4). The
+breakout module plugs into J5; its onboard regulator/level-shifting (if any) is out
+of scope here. If the direct-solder push-push variant is used instead, J5 becomes
+the microSD card socket itself (the card is the "external" connector) — footprint
+swap only, same net names.
 
 ### (d) Passives and why
 
 | Ref | Value | Rail | Reason |
 |-----|-------|------|--------|
-| C4 | 100 nF ceramic | VCC3V3 / GND at J5.4 | High-frequency decoupling for SPI switching; the standard prescribes 100 nF directly at the card power pin. **Must buy** — smallest in-stock cap (0.47 µF) is too high an impedance at SPI frequencies to substitute. |
-| C5 | 10 µF electrolytic | VCC3V3 / GND | Bulk reservoir for card initialisation inrush (~100 mA peak). In-stock. |
+| C4 | 100 nF ceramic | `SD_VDD` / GND at J5 pin 1 | High-frequency decoupling for SPI switching; the standard prescribes 100 nF directly at the card power pin. **Must buy** — smallest in-stock cap (0.47 µF) is too high an impedance at SPI frequencies to substitute. |
+| C5 | 10 µF electrolytic | `SD_VDD` / GND | Bulk reservoir for card initialisation inrush (~100 mA peak). In-stock. |
+| U5 | LDO, 3.3 V | VCC5 → `SD_VDD` | **Optional (D9):** dedicated regulator isolates the microSD rail from VCC3V3 loading/noise from the rest of the board — improves supply durability under SPI transient load. DNP by default; JP3 must move to select it when fitted. |
+| C10 | 10 µF | U5 input (VCC5/GND) | LDO input bulk cap, per typical AP2112/MCP1826/AMS1117 application circuit. DNP unless U5 fitted. |
+| C11 | 10 µF | U5 output (`SD_VDD`/GND) | LDO output bulk cap. DNP unless U5 fitted. |
 
 Note: optional 22–33 Ω series resistors on SCK/MOSI/MISO (between J2 and J5) are
 standard practice to reduce ringing on long PCB traces. On a compact carrier with
@@ -260,95 +380,110 @@ Mark DNP if placed.
 ### (e) DNP / optional
 
 J5, C4, C5 all DNP if microSD not fitted. `hasSdCard = false` in `BoardProfile`
-achieves the same in firmware.
+achieves the same in firmware. U5, C10, C11 are DNP by default (D9) — the microSD
+rail runs from onboard VCC3V3 via JP3 unless the dedicated-LDO option is populated,
+in which case JP3 must be moved to the U5-output leg.
 
 ---
 
 ## Block 4 — `ir`
 
 IR receiver (3-pin direct-solder header, VCC = 3V3) and IR TX emitter (NPN
-transistor driver, LED on JST-XH, shoot-back circuit replicating the proven Lolin32
-GPIO13 circuit).
+transistor driver, LED on a 0.1″ pin header, shoot-back circuit). **D1: IR TX now
+drives from GP37, not GP2** — flashed and tested on hardware, committed in
+`BoardProfile`. **D2: driver upgraded** from S8050/220Ω/16 mA to a higher-current
+2N2222A/33Ω/~105 mA circuit for extended range.
 
 ### (a) Components
 
 | Ref | Part | Value / Spec | KiCad Footprint | LCSC | Notes |
 |-----|------|-------------|-----------------|------|-------|
-| J6 | Pin header 1×3 | 2.54 mm pitch | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | — | IR RX — top PCB edge; direct-solder or header |
-| C9 | Ceramic cap | 100 nF / 10 V | `Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm` | — | VCC3V3 decoupling for IR RX at J6.2/J6.3; **BUY** |
-| R1 | Resistor, axial | 220 Ω | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | — | NPN base resistor |
-| R2 | Resistor, axial | 220 Ω | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | — | IR LED current limiter |
-| Q1 | NPN transistor | S8050, TO-92 | `Package_TO_SOT_THT:TO-92_Inline` | TBD | Preferred; BC547 (CBE TO-92) is a drop-in substitute — **verify pin order against datasheet before placing** |
-| J7 | JST-XH 2-pin | — | `Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical` | C158012 | IR LED cable connector |
+| J6 | Pin header 1×3 | 2.54 mm pitch | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | — | IR RX — top PCB edge; direct-solder or header. Pin order OUT·GND·VCC (D10) |
+| C9 | Ceramic cap | 100 nF / 10 V | `Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm` | — | VCC3V3 decoupling for IR RX; **BUY** |
+| R1 | Resistor, axial | **470 Ω** (D2; was 220 Ω) | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | — | NPN base resistor, GP37 → base |
+| R2 | Resistor, axial | **33 Ω** (D2; was 220 Ω) | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | — | IR LED current limiter, from VCC5. **22 Ω** is an alternative for ~150 mA if more range is needed. |
+| Q1 | NPN transistor | **2N2222A, TO-92** (D2; was S8050) | `Package_TO_SOT_THT:TO-92_Inline` | TBD | Preferred; BC337-40/S8050 are equivalents — **verify pin order against datasheet before placing** |
+| J7 | Pin header 1×2 | 2.54 mm pitch | `Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical` | — | IR LED cable connector (D3: was JST-XH B2B-XH-A 1x02 / C158012) |
 
 ### (b) Net connections
 
-**IR RX (J6):** 3-pin at top edge, usually direct-soldered (VS1838 or compatible).
+**IR RX (J6):** 3-pin at top edge, usually direct-soldered (HS0038(B) preferred —
+best ambient-light rejection; VS1738 / VS1838B / LF1638B also on hand, all 38 kHz).
 VCC = VCC3V3 (NOT 5 V — the S3's GP1 input max is 3.3 V; a receiver powered at 5 V
 would idle its OUT at ~5 V into GP1, exceeding the absolute maximum).
+
+**D10: pin order set to OUT·GND·VCC** (matches project KB and on-hand parts;
+supersedes any earlier OUT/VCC/GND ordering). **Verify per module** before
+soldering — some receivers use a different pinout.
 
 | J6 Pin | Signal | Net | To |
 |--------|--------|-----|----|
 | 1 | OUT | `IR_RX` | Hier. pin → parent J1.10 / GP1 |
-| 2 | VCC | `VCC3V3` | Global VCC3V3; C9 + |
-| 3 | GND | `GND` | Global GND; C9 − |
+| 2 | GND | `GND` | Global GND; C9 − |
+| 3 | VCC | `VCC3V3` | Global VCC3V3; C9 + |
 
-**Decoupling for IR RX:** C9 (100 nF ceramic) spans VCC3V3/GND directly at J6.2/J6.3.
+**Decoupling for IR RX:** C9 (100 nF ceramic) spans VCC3V3/GND directly at J6.3/J6.2.
 Buy from the same 100 nF lot as C4 and C7.
 
-**IR TX circuit (GP2 → NPN → IR LED on JST-XH):**
+**IR TX circuit (GP37 → NPN → IR LED on pin header, D1+D2):**
 
 ```
-VCC5 ──── R2 (220Ω) ──── J7.1 ──[IR LED anode]──[IR LED cathode]── J7.2 ──── Q1.collector
-                                                                                     |
-                                                                               Q1.emitter
-                                                                                     |
-                                                                                   GND
-GP2 ──── R1 (220Ω) ──── Q1.base
+VCC5 ──── R2 (33Ω) ──── J7.1 ──[IR LED anode]──[IR LED cathode]── J7.2 ──── Q1.collector
+                                                                                    |
+                                                                              Q1.emitter
+                                                                                    |
+                                                                                  GND
+GP37 ──── R1 (470Ω) ──── Q1.base
 ```
 
-The IR LED (D1) is not on the carrier — it lives on a short cable terminated by the
-mating JST-XH plug. R2 is on the carrier, so the cable side is just the LED.
+The IR LED (D1, the LED — not to be confused with decision-tag "D1" above) is not
+on the carrier — it lives on a short cable terminated by the mating plug. R2 is on
+the carrier, so the cable side is just the LED.
 
 | Net | From (ref.pin) | To (ref.pin) |
 |-----|----------------|--------------|
-| `IR_TX`     | Hier. pin (parent J1.9 / GP2) | R1.1 |
+| `IR_TX`     | Hier. pin (parent J2.5 / GP37) | R1.1 |
 | `IR_TX_BASE`| R1.2 | Q1.base |
 | `VCC5`      | Global | R2.1 |
 | `IR_LED_A`  | R2.2 | J7.1 |
 | `IR_LED_K`  | J7.2 | Q1.collector |
 | `GND`       | Q1.emitter | Global GND |
 
-**Operating point (assumption — documented):** With VCC5 = 5 V, IR LED Vf ≈ 1.3 V,
-Q1 Vce(sat) ≈ 0.2 V, R2 = 220 Ω:
-- I_LED = (5 − 1.3 − 0.2) / 220 ≈ **16 mA** — modest; adequate for shoot-back
-  (short distances). The only resistor value in stock is 220 Ω; a lower value
-  (e.g. 68 Ω for ~51 mA) would extend range but requires a separate purchase.
-- I_base = (3.3 − 0.7) / 220 ≈ **11.8 mA**; hFE(S8050) ≈ 200 → I_sat_max ≈ 2.4 A
-  >> 16 mA → Q1 is fully saturated. ✓
-- This replicates the proven Lolin32 GPIO13 IR-TX circuit (same driver pattern).
+**Operating point (updated per D2):** With VCC5 = 5 V, IR LED Vf ≈ 1.3 V,
+Q1 Vce(sat) ≈ 0.2 V, R2 = 33 Ω:
+- I_LED = (5 − 1.3 − 0.2) / 33 ≈ **~105 mA** (was ~16 mA at 220 Ω) — enough for
+  useful shoot-back range. A **22 Ω** option gives ~150 mA if still more range is
+  needed.
+- I_base = (3.3 − 0.7) / 470 ≈ **5.5 mA**; hFE(2N2222A) ≥ 100 → I_sat_max well
+  above 105 mA → Q1 is fully saturated. ✓
+- Driver changed from the original Lolin32 GPIO13-pattern circuit (S8050/220Ω,
+  16 mA) to this higher-current 2N2222A/33Ω/5V circuit for range.
 
 ### (c) External connectors
 
 - J6 (1×3, 2.54 mm): IR RX module or direct-solder. Placed at **top edge** of
   the PCB for unobstructed 360° field of view. Pin order (facing component side,
-  left to right): OUT / VCC / GND — matching VS1838 family (verify against your
-  specific receiver datasheet; some are GND/VCC/OUT). Add silkscreen label.
-- J7 (JST-XH 2-pin): IR LED cable. Pin 1 = LED anode (+), Pin 2 = LED cathode (−).
+  left to right): **OUT / GND / VCC** (D10) — matching the project KB and on-hand
+  parts (HS0038(B) preferred; VS1738/VS1838B/LF1638B also on hand). **Verify against
+  your specific receiver's datasheet before soldering** — pinouts vary between
+  manufacturers. Add silkscreen label.
+- J7 (pin header 1×2, 2.54 mm — D3): IR LED cable. Pin 1 = LED anode (+), Pin 2 =
+  LED cathode (−).
 
 ### (d) Passives and why
 
 | Ref | Value | Rail / Signal | Reason |
 |-----|-------|--------------|--------|
-| R1 | 220 Ω | GP2 → Q1 base | Base current limiter; ensures defined drive current and limits GPIO source current well within the S3's 40 mA per-pin max |
-| R2 | 220 Ω | VCC5 → LED | IR LED series current limiter; sets I_LED ≈ 16 mA |
-| C9 | 100 nF ceramic | VCC3V3/GND at J6.2/J6.3 | High-frequency decoupling for receiver IC. Placed as close to J6 VCC pin as possible. Buy same lot as C4 and C7. |
+| R1 | 470 Ω (D2) | GP37 → Q1 base | Base current limiter; I_base ≈ 5.5 mA, well within the S3's 40 mA per-pin max |
+| R2 | 33 Ω (D2) | VCC5 → LED | IR LED series current limiter; sets I_LED ≈ 105 mA. 22 Ω alternative for ~150 mA. |
+| C9 | 100 nF ceramic | VCC3V3/GND at J6.3/J6.2 | High-frequency decoupling for receiver IC. Placed as close to J6 VCC pin as possible. Buy same lot as C4 and C7. |
 
 ### (e) DNP / optional
 
 J6 (IR RX) and J7 (IR TX) are independently DNP. Q1, R1, R2 are DNP if J7 is
-unpopulated. The `irTxPin` in `BoardProfile` is currently `-1` on the S3 profile;
-set it to GP2 when J7 is fitted and the shoot-back feature (#5 in handoff) lands.
+unpopulated. The `irTxPin` in `BoardProfile` is now **GP37** on the S3 profile
+(D1 — flashed and tested; no longer `-1`) when J7 is fitted and the shoot-back
+feature (#5 in handoff) is enabled.
 
 ---
 
@@ -366,7 +501,7 @@ GP5 (I2C SCL) are claimed by block 6. Firmware `BoardProfile` must add `extStrip
 
 | Ref | Part | Value / Spec | KiCad Footprint | LCSC | Notes |
 |-----|------|-------------|-----------------|------|-------|
-| J8 | JST-XH 3-pin | — | `Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical` | C144394 | Strip output: 5V / DATA / GND |
+| J8 | Pin header 1×3 | 2.54 mm pitch | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | — | Strip output: 5V / DATA / GND (D3: was JST-XH B3B-XH-A 1x03 / C144394) |
 | R3 | Resistor, axial | 220 Ω | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | — | Series on DATA |
 | C6 | Electrolytic cap | 1000 µF / 10 V | `Capacitor_THT:CP_Radial_D10mm_P5.00mm` | — | Bulk bypass at strip input |
 
@@ -381,7 +516,7 @@ GP5 (I2C SCL) are claimed by block 6. Firmware `BoardProfile` must add `extStrip
 
 ### (c) External connector
 
-J8 (JST-XH 3-pin). Pinout: **Pin 1 = 5V, Pin 2 = DATA, Pin 3 = GND.**  
+J8 (pin header 1×3, 2.54 mm — D3). Pinout: **Pin 1 = 5V, Pin 2 = DATA, Pin 3 = GND.**  
 Match to the mating XH plug on the WS2812 strip input or to the level-shifter board
 (block 7) input connector when a long strip is used.
 
@@ -389,7 +524,7 @@ Match to the mating XH plug on the WS2812 strip input or to the level-shifter bo
 
 | Ref | Value | Position | Reason |
 |-----|-------|----------|--------|
-| R3 | 220 Ω | Between GP6 and J8.2 | Textbook series resistor at the first pixel of a WS2812 strip: damps ringing and protects the GPIO from capacitive loads. Placed on the carrier side of the JST-XH, not the strip side. |
+| R3 | 220 Ω | Between GP6 and J8.2 | Textbook series resistor at the first pixel of a WS2812 strip: damps ringing and protects the GPIO from capacitive loads. Placed on the carrier side of the pin header, not the strip side. |
 | C6 | 1000 µF / 10 V electrolytic | VCC5/GND at J8.1/J8.3 | Bulk reservoir for the strip's inrush when powering on; prevents rail collapse on the first frame. The textbook recommendation for WS2812 strips. In-stock. |
 
 **Note on level-shifting:** many WS2812B strips accept 3.3 V data and will work
@@ -404,7 +539,7 @@ J8, R3, C6 are all DNP if no external strip is fitted.
 
 ## Block 6 — `i2c_oled_xh`
 
-I2C OLED or LCD connector (JST-XH 4-pin). The S3-Matrix `BoardProfile` has
+I2C OLED or LCD connector (0.1″ pin header, 4-pin — D3, was JST-XH). The S3-Matrix `BoardProfile` has
 `sdaPin = -1`, `sclPin = -1` today; this block assigns **SDA = GP4, SCL = GP5**
 (the first two free, clean pins after IR and I2S claims — confirmed in pcb-design.md
 "free & clean" list).
@@ -413,7 +548,7 @@ I2C OLED or LCD connector (JST-XH 4-pin). The S3-Matrix `BoardProfile` has
 
 | Ref | Part | Value / Spec | KiCad Footprint | LCSC | Notes |
 |-----|------|-------------|-----------------|------|-------|
-| J9 | JST-XH 4-pin | — | `Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical` | C144395 | 3V3 / GND / SDA / SCL |
+| J9 | Pin header 1×4 | 2.54 mm pitch | `Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical` | — | 3V3 / GND / SDA / SCL (D3: was JST-XH B4B-XH-A 1x04 / C144395) |
 | R4 | Resistor, axial | 4.7 kΩ | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | — | SDA pull-up — **DNP** (see below) |
 | R5 | Resistor, axial | 4.7 kΩ | same | — | SCL pull-up — **DNP** (see below) |
 
@@ -434,7 +569,7 @@ unless the bare OLED glass (no pull-ups on the cable end) is used directly.
 
 ### (c) External connector
 
-J9 (JST-XH 4-pin). Pinout: **Pin 1 = 3V3, Pin 2 = GND, Pin 3 = SDA, Pin 4 = SCL.**  
+J9 (pin header 1×4, 2.54 mm — D3). Pinout: **Pin 1 = 3V3, Pin 2 = GND, Pin 3 = SDA, Pin 4 = SCL.**  
 Matches Qwiic/STEMMA-QT convention minus the connector type (those are JST-SH 4-pin).
 Note this on the silkscreen. I2C address for SSD1306 = 0x3C (default).
 
@@ -465,8 +600,8 @@ logic as HIGH while the output swings to VCC = 5 V.
 
 | Ref | Part | Value / Spec | KiCad Footprint | LCSC | Notes |
 |-----|------|-------------|-----------------|------|-------|
-| J10 | JST-XH 3-pin (or 2.54 mm header) | — | `Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical` | C144394 | Input: 5V / DATA_IN(3V3) / GND |
-| J11 | JST-XH 3-pin | — | `Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical` | C144394 | Output: 5V / DATA_OUT(5V) / GND |
+| J10 | Pin header 1×3 | 2.54 mm pitch | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | — | Input: 5V / DATA_IN(3V3) / GND (D3: was JST-XH B3B-XH-A 1x03 / C144394) |
+| J11 | Pin header 1×3 | 2.54 mm pitch | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | — | Output: 5V / DATA_OUT(5V) / GND (D3: was JST-XH B3B-XH-A 1x03 / C144394) |
 | U1 | 74AHCT125, SOIC-14 | — | `Package_SO:SOIC-14_3.9x8.7mm_P1.27mm` | C7466 | Quad tri-state buffer |
 | R6 | Resistor, axial | 220 Ω | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | — | Series resistor on DATA_OUT |
 | C7 | Ceramic cap | 100 nF / 10 V | `Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm` | — | VCC decoupling for U1; **BUY** |
@@ -505,10 +640,10 @@ Full net table:
 
 ### (c) External connectors
 
-- **J10 (input):** JST-XH 3-pin. Pin 1 = 5V, Pin 2 = DATA_IN (3.3 V from carrier
-  J8.2), Pin 3 = GND. Cable from carrier J8.
-- **J11 (output):** JST-XH 3-pin. Pin 1 = 5V, Pin 2 = DATA_OUT (5 V shifted),
-  Pin 3 = GND. Cable to WS2812 strip.
+- **J10 (input):** Pin header 1×3, 2.54 mm (D3). Pin 1 = 5V, Pin 2 = DATA_IN
+  (3.3 V from carrier J8.2), Pin 3 = GND. Cable from carrier J8.
+- **J11 (output):** Pin header 1×3, 2.54 mm (D3). Pin 1 = 5V, Pin 2 = DATA_OUT
+  (5 V shifted), Pin 3 = GND. Cable to WS2812 strip.
 
 The 5 V rail passes through: carrier → J10.1 → board → J11.1 → strip. The strip
 is powered from the same 5 V supply as the carrier.
@@ -534,7 +669,7 @@ for long runs or strips requiring V_IH > 3.3 V.
 | Pin | Assignment | Block |
 |-----|-----------|-------|
 | GP1 | IR RX | 4 |
-| GP2 | IR TX | 4 |
+| GP2 | **role selector** (default none; touch JP5 recommended, or button JP4 / audio-mute JP1) | 1(f) |
 | GP3 | Strapping — **no carrier assignment; do not use for SPI or level-sensitive logic** | — |
 | GP4 | I2C SDA | 6 |
 | GP5 | I2C SCL | 6 |
@@ -544,7 +679,7 @@ for long runs or strips requiring V_IH > 3.3 V.
 | GP34 | SD MOSI | 3 |
 | GP35 | SD MISO | 3 |
 | GP36 | SD CS | 3 |
-| **GP37** | **SPARE — only remaining free pin** | — |
+| GP37 | IR TX | 4 |
 | GP38 | I2S BCLK | 2 |
 | GP39 | I2S WS (LRC) | 2 |
 | GP40 | I2S DIN | 2 |
@@ -552,13 +687,15 @@ for long runs or strips requiring V_IH > 3.3 V.
 | GP44 / RX | UART0 console — **reserved, no carrier assignment** | — |
 | GP14 | Onboard matrix (internal, not on header) | — |
 
-**No pin contention** exists when blocks 2–6 are all populated: each pin is
-claimed by exactly one block. The constraint is that GP4/GP5 (I2C) and GP6
-(WS2812 external) are all consumed by blocks 5 and 6, leaving GP37 as the only
-spare broken-out pin.
+**D1 (2026-07-04): IR TX moved GP2 → GP37**, flashed and tested on hardware. This
+frees GP2. **The board is now fully packed** — every broken-out pin is claimed by
+exactly one block when blocks 2–6 are all populated. GP2 is the only slack, exposed
+as the **role selector** (D11, Block 1 (f)): default none (spare/test-point), or one
+of touch (JP5, recommended) / button (JP4) / audio SD hard-mute (JP1). Close at most
+one — these are mutually exclusive board variants, not simultaneous functions.
 
 **Warning — GP3:** This is a strapping pin sampled at boot. Driving it as a GPIO
-output during or immediately before boot reset can alter boot mode. If GP37 is
+output during or immediately before boot reset can alter boot mode. If GP2 is
 insufficient and GP3 must be used, add a 10 kΩ pull-down resistor to hold it LOW
 through power-on; avoid SPI CS usage (level glitches at power-on).
 
@@ -577,21 +714,35 @@ through power-on; avoid SPI CS usage (level glitches at power-on).
    receiver must be used, a voltage divider or level translator is required on the
    OUT line — not specified here.
 
-3. **IR TX circuit values (220 Ω base, 220 Ω LED series).** These are the only
-   resistor values in stock. They yield I_LED ≈ 16 mA and I_base ≈ 11.8 mA. This
-   is the minimum to drive 38 kHz-modulated IR effectively at short ranges (<5 m).
-   Upgrade R2 to 68 Ω (buy) for ≈51 mA and longer range when available.
+3. **IR TX circuit values (D2, updated 2026-07-04): 470 Ω base, 33 Ω LED series,
+   driven from VCC5.** This replaces the earlier 220 Ω/220 Ω values. They yield
+   I_LED ≈ 105 mA (up from ~16 mA) and I_base ≈ 5.5 mA — enough headroom for
+   useful shoot-back range. A **22 Ω** option is available for ≈150 mA if still
+   more range is needed; 33 Ω/470 Ω/22 Ω are all covered by the resistor pack the
+   user has ordered (also covers 220 Ω/330 Ω/1 kΩ).
 
-4. **NPN transistor = S8050, LCSC TBD.** S8050 is preferred for availability and
-   high hFE; BC547 is a drop-in substitute but has the opposite TO-92 pin order
-   (CBE vs EBC — verify before placing footprint). Confirm the LCSC part number
-   on lcsc.com before BOM submission; do not use C2053 without verifying it maps
-   to an S8050.
+4. **NPN transistor = 2N2222A (D2, updated 2026-07-04; was S8050), LCSC TBD.**
+   2N2222A is the primary part for the higher-current (~105 mA) IR-TX driver;
+   BC337-40/S8050 are equivalents. Verify TO-92 pin order (EBC/CBE varies by
+   manufacturer) before placing the footprint. Confirm the LCSC part number on
+   lcsc.com before BOM submission.
 
-5. **MAX98357A SD pin unconnected.** The module has an internal 100 kΩ pull-up to
-   VIN; SD floating HIGH = amp always enabled. This is the intended default per the
-   handoff (no SD shutdown needed in normal operation). Add a pull-down to GND via a
-   jumper or solder bridge if power-gate control is ever required.
+5. **GP2 role selector (D7 + D11, updated 2026-07-04).** GP2 feeds a solder-jumper
+   selector (Block 1 (f)) offering, per build, exactly one of: **none** (default —
+   spare/test-point), **touch sensor** (recommended, JP5), **button** (JP4), or
+   **audio SD hard-mute** (JP1 → MAX98357A SD). With all jumpers open (default) the
+   amp's SD floats HIGH via its internal 100 kΩ pull-up → amp always enabled
+   (unchanged behaviour). Each role needs a matching `BoardProfile` setting in
+   firmware; none is required for normal operation. Touch VCC must be **3V3**.
+
+5a. **Power LED always populated (D6).** D2 + R7 (330 Ω default, up to 1 kΩ
+    acceptable for lower quiescent draw on battery) sit across VCC5(switched)/GND
+    on the parent sheet and are NOT DNP — every board gets a power indicator.
+
+5b. **Power-input terminal block J0 (D5).** A 2-pin terminal block feeds VCC5/GND
+    directly; the module's 5V pin (J1.1) is powered from VCC5. The power switch and
+    any battery/charger circuitry are explicitly off-board, upstream of J0 — not
+    part of this carrier's scope.
 
 6. **I2C pull-ups DNP.** SSD1306 breakout modules carry 4.7 kΩ pull-ups onboard.
    R4/R5 footprints are present but marked DNP. 4.7 kΩ resistors must be purchased
@@ -630,23 +781,40 @@ through power-on; avoid SPI CS usage (level glitches at power-on).
 
 | Ref(s) | Qty | Part | Value | KiCad Footprint | LCSC | Status |
 |--------|-----|------|-------|-----------------|------|--------|
+| J0 | 1 | Terminal block, 2-pin (D5) | 2.54/5.08 mm | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MPT-0,5-2-2.54_1x02` | — | Buy |
 | J1, J2 | 2 | PinSocket 1×10 | 2.54 mm | `Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical` | — | Buy |
 | J3 | 1 | PinSocket 1×7 | 2.54 mm | `Connector_PinSocket_2.54mm:PinSocket_1x07_P2.54mm_Vertical` | — | Buy |
-| J4, J7 | 2 | JST-XH 2-pin | — | `Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical` | C158012 | Buy |
-| J8, J10, J11 | 3 | JST-XH 3-pin | — | `Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical` | C144394 | Buy |
-| J9 | 1 | JST-XH 4-pin | — | `Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical` | C144395 | Buy |
-| J5 | 1 | microSD push-push socket | 9-pin | `Connector_Card:microSD_HC_Hirose_DM3AT-SF-PEJM5` | TBD | Buy |
+| J4, J7 | 2 | Pin header 1×2 (D3; was JST-XH B2B-XH-A 1x02 / C158012) | 2.54 mm | `Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical` | — | Buy |
+| J8, J10, J11 | 3 | Pin header 1×3 (D3; was JST-XH B3B-XH-A 1x03 / C144394) | 2.54 mm | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | — | Buy |
+| J9 | 1 | Pin header 1×4 (D3; was JST-XH B4B-XH-A 1x04 / C144395) | 2.54 mm | `Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical` | — | Buy |
+| J5 | 1 | PinSocket 1×6 (D4 — **primary**, breakout module; was push-push microSD) | 2.54 mm | `Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical` | — | Buy |
+| J5-alt | 1 | microSD push-push socket (D4 — **demoted to alternative**) | 9-pin | `Connector_Card:microSD_HC_Hirose_DM3AT-SF-PEJM5` | TBD | Buy only if using this variant |
 | J6 | 1 | Pin header 1×3 | 2.54 mm | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | — | Buy (or use cut-down strip) |
-| C1, C2, C5 | 3 | Electrolytic cap | 10–100 µF / 10 V | `Capacitor_THT:CP_Radial_D6.3mm_P2.50mm` or D5 | — | In stock |
+| SW1 | 1 | Tactile micro-switch, THT (D11 — GP2 button role) | 6 mm | `Button_Switch_THT:SW_PUSH_6mm_H5mm` | — | Optional (button variant) |
+| J12 | 1 | Pin header 1×2 (D11 — external button, ‖ SW1) | 2.54 mm | `Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical` | — | Optional (button variant) |
+| J13 | 1 | Pin header 1×3 (D11 — touch header SIG/VCC3V3/GND) | 2.54 mm | `Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical` | — | Optional (touch variant, recommended) |
+| R8 | 1 | Resistor (D11 — GP2 pull-up) | 10 kΩ | Same axial footprint | — | **DNP** (internal pull-up default) |
+| C12 | 1 | Ceramic cap (D11 — button debounce) | 100 nF | `Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm` | — | **DNP** (fit if bounce) |
+| C1, C2, C5 | 3 | Electrolytic cap | 10–100 µF / 10 V | `Capacitor_THT:CP_Radial_D6.3mm_P2.50mm` or D5mm | — | In stock |
 | C3 | 1 | Electrolytic cap | 470 µF / 10 V | `Capacitor_THT:CP_Radial_D10mm_P5.00mm` | — | In stock |
 | C6, C8 | 2 | Electrolytic cap | 1000 µF / 10 V | `Capacitor_THT:CP_Radial_D10mm_P5.00mm` | — | In stock |
 | C4, C7, C9 | 3 | Ceramic cap | **100 nF / 10 V** | `Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm` | — | **BUY** — not in stock (C4=microSD VCC, C7=74AHCT125 VCC, C9=IR RX VCC) |
-| R1, R2, R3, R6 | 4 | Resistor | 220 Ω | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | — | In stock |
+| C10, C11 | 2 | Ceramic/electrolytic cap (D9 — optional, U5 fitted only) | 10 µF | `Capacitor_THT:CP_Radial_D5mm_P2.50mm` or SMD per U5 footprint | — | DNP unless U5 fitted; buy if fitting |
+| R1 | 1 | Resistor (D2; was 220 Ω) | **470 Ω** | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | — | In stock (resistor pack covers 470 Ω) |
+| R2 | 1 | Resistor (D2; was 220 Ω) | **33 Ω** | Same axial footprint | — | In stock (resistor pack covers 33 Ω; 22 Ω alt also covered) |
+| R3, R6 | 2 | Resistor | 220 Ω | `Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal` | — | In stock |
 | R4, R5 | 2 | Resistor | **4.7 kΩ** | Same axial footprint | — | **DNP** (buy only if bare OLED, no pull-ups) |
-| Q1 | 1 | NPN transistor | S8050, TO-92 | `Package_TO_SOT_THT:TO-92_Inline` | TBD — verify on LCSC | Buy |
+| R7 | 1 | Resistor (D6 — always populated) | **330 Ω** (up to 1 kΩ acceptable) | Same axial footprint | — | In stock (resistor pack covers 330 Ω/1 kΩ) |
+| D2 | 1 | LED, THT (D6 — always populated) | Power indicator | `LED_THT:LED_D5.0mm` | — | Buy |
+| Q1 | 1 | NPN transistor (D2; was S8050) | **2N2222A**, TO-92 | `Package_TO_SOT_THT:TO-92_Inline` | TBD — verify on LCSC | Buy |
 | U1 | 1 | 74AHCT125, SOIC-14 | — | `Package_SO:SOIC-14_3.9x8.7mm_P1.27mm` | C7466 | Buy (level-shifter board only) |
+| U5 | 1 | LDO regulator, 3.3 V (D9 — optional) | AP2112-3.3 / MCP1826 / AMS1117-3.3 | Per chosen part | TBD | DNP by default; buy if fitting the microSD dedicated-LDO option |
 
 **Single most important purchase:** a strip of 100 nF through-hole ceramic capacitors
 (at least 3, buy 10) — these are the one item the on-hand kit is missing that
 affects correctness (C4 microSD VCC bypass, C7 74AHCT125 VCC bypass, C9 IR RX
-VCC bypass). All other parts use values already in stock.
+VCC bypass).
+
+**Note (2026-07-04):** the user has ordered a resistor pack covering 33 Ω, 220 Ω,
+330 Ω, 470 Ω, 1 kΩ, etc. — R1 (470 Ω), R2 (33 Ω), and R7 (330 Ω) are expected to be
+in stock once that pack arrives, in addition to the existing 220 Ω stock (R3, R6).

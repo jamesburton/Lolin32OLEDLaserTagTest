@@ -91,6 +91,12 @@ supplies **3V3-OUT** for microSD + IR-RX. **Don't also power via USB while the
 terminal block is live** (no backfeed isolation assumed). Switch (+ any battery/
 charger) sits upstream of the terminal block; doesn't affect the board circuit.
 
+> **AUTHORITATIVE SPEC = `.docs/pcb-blocks.md`** (see its RECONCILED 2026-07-04
+> section). The board was expanded to **full scope** (adds I2C OLED, external
+> WS2812 out, optional level-shifter board) with a **GP2 role selector** (default
+> none / recommended touch / button / audio-mute). The tables below are the
+> **lean-core summary**; `pcb-blocks.md` owns the complete per-block netlist + BOM.
+
 ### Connectors (female, 0.1″)
 - **ESP32-S3-Matrix carrier:** 2× `1×10`, rows **22.86 mm (0.9″)** apart. Pads —
   L-row `5V·GND·3V3·GP7·GP6·GP5·GP4·GP3·GP2·GP1`; R-row
@@ -114,7 +120,7 @@ charger) sits upstream of the terminal block; doesn't affect the board circuit.
 | 5V | → | audio Vin | amp on 5V |
 | GND | → | audio GND | |
 | jumper | | audio GAIN | **optional** 3-way strap: float=9 dB (default) / GND=15 dB / Vin=3 dB. Volume is done in SW (`kVolume`) — no dynamic control needed |
-| GP4 | → | audio SD (shutdown) | **optional, recommended:** firmware hard-mute at idle (backstop to the DMA-stop noise gotcha); else leave floating = enabled |
+| GP2 | → | audio SD (shutdown) | audio hard-mute = one option of the **GP2 role selector** (default none / touch / button / audio-mute) — GP4/5 are I2C in the full board, so mute lives on GP2 via solder-jumper |
 | GP33 | → | microSD CLK | SPI |
 | GP34 | → | microSD MOSI | |
 | GP35 | → | microSD MISO | |
@@ -164,14 +170,14 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
    verify substitute pinouts (VS1738/VS1838B/LF1638B on hand — all 38 kHz).
 2. **Hit LED:** = existing onboard green GP7 (firmware-driven on IR-RX). No new
    part/code; optional external repeat via GP7→220Ω. GP2 idea dropped.
-3. **Audio:** wire **SD→GP4** (optional but recommended hard-mute; small firmware
-   add TODO); **GAIN** = fixed strap + optional 3-way jumper (volume is SW).
+3. **Audio:** SD hard-mute is one option of the **GP2 role selector** (GP4/5 are I2C
+   in the full board); **GAIN** = fixed strap + optional 3-way jumper (volume is SW).
 4. **microSD supply:** bulk cap (22–47 µF) always; add **dedicated 3V3 LDO from
    5V** (U5) for durability so SD peaks don't brown out the ESP.
 
 ### Still open
-- If wiring SD→GP4: add the firmware hard-mute (assert SD low at idle) + a
-  `BoardProfile` field; decide during the PCB-phase firmware pass.
+- Each **GP2 role** (touch / button / audio-mute) needs a `BoardProfile` field +
+  firmware when that variant is built; decide during the PCB-phase firmware pass.
 
 ## Key decisions
 - **Hybrid board config**: peripheral presence + IR pins are compile-time
@@ -294,7 +300,8 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
    optional pins default to `-1` via the existing hybrid config
    (`irTxPin` already exists = shoot-back enable; add `sd*Pin`). **Pins confirmed**
    against the official pinout: only GP1-7 + GP33-40 + TX/RX are broken out → IR TX
-   **GP2**, microSD SPI **GP33-36** (SCK/MOSI/MISO/CS). See pcb-design.md.
+   **GP37** (moved from GP2, flashed + tested), microSD SPI **GP33-36**
+   (SCK/MOSI/MISO/CS). See pcb-design.md / pcb-blocks.md.
 
    ### Tooling decision (researched 2026-06-28)
    No single tool does both ESP simulation AND PCB layout well — it's a two-track
