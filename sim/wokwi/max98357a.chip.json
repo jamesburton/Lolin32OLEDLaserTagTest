@@ -1,0 +1,16 @@
+{
+  "name": "MAX98357A",
+  "author": "James Burton",
+  "pins": [
+    "VIN",
+    "GND",
+    "SD",
+    "GAIN",
+    "DIN",
+    "",
+    "BCLK",
+    "LRC",
+    "SPK+",
+    "SPK-"
+  ]
+}

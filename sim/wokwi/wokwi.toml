@@ -1,0 +1,26 @@
+# Wokwi simulation project — ESP32-S3-Matrix laser-tag target.
+#
+# Build the firmware first:
+#   pio run -e esp32-s3-matrix
+#
+# Then run the sim from the project root (requires WOKWI_CLI_TOKEN env var):
+#   wokwi-cli sim/wokwi --timeout 30000
+# (wokwi-cli takes the directory containing wokwi.toml; diagram.json is
+# auto-discovered beside it)
+#
+# Paths are relative to this file (sim/wokwi/), hence the ../../ prefix.
+
+[wokwi]
+version = 1
+firmware = "../../.pio/build/esp32-s3-matrix/firmware.bin"
+elf      = "../../.pio/build/esp32-s3-matrix/firmware.elf"
+
+# MAX98357A I2S amp stub. Wokwi custom chips require a compiled WASM binary.
+# See README.md for how to build max98357a.chip.wasm from max98357a.chip.c.
+#
+# If you have not built the WASM yet, comment out this [[chip]] block and
+# remove the "chip-max98357a" part from diagram.json; the matrix/IR/serial
+# validation tracks are fully independent of the audio stub.
+[[chip]]
+name   = "max98357a"
+binary = "max98357a.chip.wasm"

@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "author": "James Burton",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-s3-devkitc-1",
+      "id": "esp",
+      "top": 0,
+      "left": 130,
+      "attrs": {
+        "flashSize": "4",
+        "serialInterface": "USB_SERIAL_JTAG"
+      }
+    },
+    {
+      "type": "wokwi-led-matrix",
+      "id": "matrix",
+      "top": 200,
+      "left": -130,
+      "attrs": {
+        "rows": "8",
+        "cols": "8"
+      }
+    },
+    {
+      "type": "wokwi-ir-receiver",
+      "id": "ir1",
+      "top": 60,
+      "left": 390,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "actled",
+      "top": 175,
+      "left": 395,
+      "attrs": {
+        "color": "green"
+      }
+    },
+    {
+      "type": "chip-max98357a",
+      "id": "amp1",
+      "top": 310,
+      "left": 375,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    ["esp:14",       "matrix:DIN",   "green",  []],
+    ["matrix:VDD",   "esp:5V",       "red",    []],
+    ["matrix:VSS",   "esp:GND.1",    "black",  []],
+
+    ["esp:1",        "ir1:DAT",      "green",  []],
+    ["ir1:VCC",      "esp:3V3.1",    "red",    []],
+    ["ir1:GND",      "esp:GND.2",    "black",  []],
+
+    ["esp:7",        "actled:A",     "green",  []],
+    ["actled:C",     "esp:GND.2",    "black",  []],
+
+    ["esp:38",       "amp1:BCLK",    "orange", []],
+    ["esp:39",       "amp1:LRC",     "yellow", []],
+    ["esp:40",       "amp1:DIN",     "white",  []],
+    ["amp1:VIN",     "esp:5V",       "red",    []],
+    ["amp1:GND",     "esp:GND.3",    "black",  []]
+  ]
+}

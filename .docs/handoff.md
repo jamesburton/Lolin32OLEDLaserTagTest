@@ -66,16 +66,112 @@ Layers complete and on `main`:
 all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
 
 ## Hardware (both live on HAL firmware, both OTA-flashable)
-- **ESP32-S3-Matrix** (target): WiFi now **192.168.1.28** (was .24 — DHCP moved;
-  **`esp32-s3-matrix-ota` `upload_port` in platformio.ini still says .24 → update
-  before OTA**), fw 2.0.0, deviceId `752b38`. 8×8 WS2812 GPIO14 (**RGB** order),
-  IR RX GPIO1, act LED GPIO7, **MAX98357A I2S on GPIO38/39/40** (this session).
+- **ESP32-S3-Matrix** (target): WiFi roams via DHCP (seen .24 → .28 → **.33**);
+  **mDNS `lasertag-matrix.local` NOW resolves on this Windows host** — use it
+  instead of chasing the IP (this contradicts the older platformio.ini/README
+  "mDNS doesn't resolve here" notes — those are stale; something changed). For
+  OTA still use the *current IP* with espota `-I <pc-lan-ip>` (mDNS name is
+  unreliable for espota). fw 2.0.0, deviceId `752b38`. 8×8 WS2812 GPIO14 (**RGB**
+  order), IR RX GPIO1, act LED GPIO7, **MAX98357A I2S on GPIO38/39/40**.
   Native USB-CDC enumerates as **COM6** (VID 303A:1001); CH340 on COM-x is the
-  Lolin32. Health-bar idle. No IR TX yet (user plans to add one → retaliation).
+  Lolin32. Health-bar idle. **IR TX on GPIO37** (this session) + manual
+  `fire <team> <damage>` serial verb and `{cmd:"fire",team,damage}` REST command
+  (`CommandKind::Fire`); verified end-to-end (self-RX loopback registers exact
+  damage). Bench uses a bare LED+220Ω = short range; **PCB uses a 2N2222A driver
+  from 5V** (see Board BOM). Retaliation auto-fire still TODO (Next Steps #5).
 - **Lolin32 OLED** (monitor/target): WiFi **192.168.1.48**, fw 2.0.0. IR RX GPIO25,
   IR TX GPIO13, OLED (SSD1306 128×32, SDA5/SCL4), act LED GPIO26, external 8×8
   WS2812 on **GPIO14** (**GRB** order — assumed; verify if colours look off).
   Refactored onto the HAL: IR monitor/decode/OLED + IrTx + panel idle rainbow.
+
+## Board BOM / discrete circuitry — ESP32-S3-Matrix carrier (for PCB phase, Next Steps #9)
+All 0.1″ pitch; peripherals on female sockets (LEDs/IR-RX socket-or-direct). Power:
+single **5V** in via a 2-pin terminal block → board 5V pin; the board's onboard LDO
+supplies **3V3-OUT** for microSD + IR-RX. **Don't also power via USB while the
+terminal block is live** (no backfeed isolation assumed). Switch (+ any battery/
+charger) sits upstream of the terminal block; doesn't affect the board circuit.
+
+### Connectors (female, 0.1″)
+- **ESP32-S3-Matrix carrier:** 2× `1×10`, rows **22.86 mm (0.9″)** apart. Pads —
+  L-row `5V·GND·3V3·GP7·GP6·GP5·GP4·GP3·GP2·GP1`; R-row
+  `GP33·GP34·GP35·GP36·GP37·GP38·GP39·GP40·GP43·GP44`.
+- **MAX98357A audio `1×7`:** order **LRC·BCLK·DIN·GAIN·SD·GND·Vin** (user's
+  "RCLK"=BCLK, "GNC"=GND).
+- **microSD `1×6`:** order **3V3·CS·MOSI·CLK·MISO·GND**.
+- **IR receiver `1×3`:** 38 kHz (Vatos `CarrierHz`=38000 ✓; VS1738 / HS0038 /
+  VS1838B / LF1638B all match band). Socket order **OUT·GND·VCC** — **verify each
+  substitute's pinout** before swapping (clone batches differ; reversed VCC/GND
+  kills the part). Design ref = **HS0038(B)** (best ambient-light rejection);
+  VS1838B a confirmed-pinout spare.
+- **Power in:** 2-pin terminal block.
+
+### Net map (carrier → peripheral)
+| Carrier | → | Peripheral pin | Notes |
+|---|---|---|---|
+| GP39 | → | audio LRC (WS) | I2S |
+| GP38 | → | audio BCLK | I2S |
+| GP40 | → | audio DIN | I2S |
+| 5V | → | audio Vin | amp on 5V |
+| GND | → | audio GND | |
+| jumper | | audio GAIN | **optional** 3-way strap: float=9 dB (default) / GND=15 dB / Vin=3 dB. Volume is done in SW (`kVolume`) — no dynamic control needed |
+| GP4 | → | audio SD (shutdown) | **optional, recommended:** firmware hard-mute at idle (backstop to the DMA-stop noise gotcha); else leave floating = enabled |
+| GP33 | → | microSD CLK | SPI |
+| GP34 | → | microSD MOSI | |
+| GP35 | → | microSD MISO | |
+| GP36 | → | microSD CS | |
+| 3V3 | → | microSD 3V3 | **3.3V only** |
+| GND | → | microSD GND | |
+| GP1 | ← | IR-RX OUT | confirm module pinout |
+| 3V3 | → | IR-RX VCC | |
+| GND | → | IR-RX GND | |
+| GP37 | → | IR-TX driver (470Ω→Q1.B) | see below |
+| GP7 | → | hit indicator = **onboard green LED**, already firmware-driven on IR-RX (no new part/code). Optional external repeat: GP7→220Ω→LED on a header | |
+| 5V(sw) | → | power-LED (330Ω, 1k on battery) | always-on |
+| 3V3(SD) | | 22–47 µF bulk cap → GND at socket | inrush; **optional** dedicated LDO — see below |
+
+### IR-emitter driver (discrete, GPIO can't reach range direct)
+`5V ─[33Ω]─▶|IR-LED─ Q1.C` · `GP37 ─[470Ω]─ Q1.B` · `Q1.E ─ GND` — Q1 = **2N2222A**.
+33Ω ≈ 100 mA; swap **22Ω ≈ 150 mA** if range still short. Status: design, pending
+hardware validation.
+
+### BOM
+| Ref | Part | Qty |
+|---|---|---|
+| U1 | Waveshare ESP32-S3-Matrix | 1 |
+| U2 | MAX98357A I2S amp breakout | 1 |
+| U3 | microSD breakout (3.3V SPI) | 1 |
+| U4 | IR receiver (VS1838B / TSOP38xx) | 1 |
+| Q1 | 2N2222A NPN TO-92 (BC337-40 / S8050 equiv) | 1 |
+| D1 | IR LED 940 nm | 1 |
+| D2 | power LED | 1 |
+| D3 | hit LED — *optional* external (onboard green LED already serves) | 0–1 |
+| R1 | 33Ω ¼W — IR series (opt. 22Ω) | 1 |
+| R2 | 470Ω ¼W — Q1 base | 1 |
+| R3 | power LED — **330Ω default** (list 330Ω–1k; 1k = battery-sipping) | 1 |
+| R4 | 220Ω ¼W — *optional* external hit LED | 0–1 |
+| C1 | 22–47 µF bulk cap — microSD 3V3 at socket | 1 |
+| U5 | *optional* 3V3 LDO from 5V for microSD (durability): AP2112-3.3 / MCP1826 / AMS1117-3.3 + 10 µF in/out | 0–1 |
+| J1 | 2-pin terminal block, 0.1″ | 1 |
+| LS1 | 4/8Ω speaker | 1 |
+| — | female headers: 2×`1×10`, `1×7`, `1×6`, `1×3`, + 2-pin LED ×2–3 | — |
+
+**Assembly-time DNP options:** D3 (external hit LED) and U5 (+its in/out caps) are
+fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so SD
+3V3 sources from the onboard 3V3 when U5 is unpopulated; D3 is trivially omitted.
+
+### Resolved (2026-07-04)
+1. **IR-RX:** 38 kHz confirmed; design to **HS0038(B)**, socket OUT·GND·VCC,
+   verify substitute pinouts (VS1738/VS1838B/LF1638B on hand — all 38 kHz).
+2. **Hit LED:** = existing onboard green GP7 (firmware-driven on IR-RX). No new
+   part/code; optional external repeat via GP7→220Ω. GP2 idea dropped.
+3. **Audio:** wire **SD→GP4** (optional but recommended hard-mute; small firmware
+   add TODO); **GAIN** = fixed strap + optional 3-way jumper (volume is SW).
+4. **microSD supply:** bulk cap (22–47 µF) always; add **dedicated 3V3 LDO from
+   5V** (U5) for durability so SD peaks don't brown out the ESP.
+
+### Still open
+- If wiring SD→GP4: add the firmware hard-mute (assert SD low at idle) + a
+  `BoardProfile` field; decide during the PCB-phase firmware pass.
 
 ## Key decisions
 - **Hybrid board config**: peripheral presence + IR pins are compile-time
@@ -212,8 +308,16 @@ all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
    - **Drive KiCad from here as code** via **atopile** (`.ato` text, `ato` CLI,
      part registry at packages.atopile.io, compiles → `.kicad_pcb`; modern,
      AI-friendly — I can author `.ato` from Claude Code, it picks parts + runs
-     checks + updates the layout) or **SKiDL** (Python → KiCad netlist). atopile
-     preferred pending registry-coverage check (task 1).
+     checks + updates the layout) or **SKiDL** (Python → KiCad netlist).
+     **RESOLVED (task 1, 2026-07-04):** atopile registry coverage for OUR parts is
+     **thin** — passives/connectors/USB only; ESP32-S3 pkg is archived (Oct 2024),
+     and SSD1306 / MAX98357A / microSD socket / WS2812 have no real registry
+     presence. `ato create part -s <LCSC#>` auto-gens footprint+symbol+3D from a
+     JLCPCB/LCSC part number (all 6 parts have common SKUs), but that's ~5 custom
+     `.ato` modules to author+maintain — comparable to defining them in KiCad.
+     **⇒ For this part set, plain KiCad + an MCP server is the lower-risk pick;**
+     reach for atopile only if we want code-based reuse/constraint-solving and will
+     maintain those parts.
    - **Simulation = Wokwi** (separate track). Runs the **actual PlatformIO
      firmware** on a sim ESP32-S3, open **`diagram.json`**, **`wokwi-cli`** for CI,
      and an **official (experimental) MCP server** (`wokwi-cli mcp`, needs token).
@@ -231,13 +335,23 @@ all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
    board pops out of the CLI.
 
    ### Plan (tasks)
-   1. **Verify atopile registry coverage** (first, cheap): does
-      packages.atopile.io have ESP32-S3 module / SSD1306 / MAX98357A / microSD
-      socket / WS2812 — or how hard to define? Thin coverage → favour plain KiCad
-      + MCP over atopile. (Known sim gap: **MAX98357A is NOT a stock Wokwi part** —
-      stub it or write a custom chip.)
-   2. Install/trial the stack from here: KiCad + chosen MCP server, atopile
-      (`ato`), `wokwi-cli` (+ MCP). Confirm each runs in this environment.
+   1. ✅ **DONE (2026-07-04): atopile registry coverage checked — thin.** Favour
+      plain KiCad + MCP for this part set (see RESOLVED note above). (Known sim
+      gap still stands: **MAX98357A is NOT a stock Wokwi part** — stub it or write
+      a custom chip.)
+   2. ✅ **DONE (2026-07-04): stack trial-installed, all runnable from here.**
+      - **KiCad 10.0.3** already on the box (winget). `kicad-cli` works by full
+        path `C:\Program Files\KiCad\10.0\bin\kicad-cli.exe` — **not on PATH**
+        (user-level PATH add if wanted, no admin).
+      - **wokwi-cli 0.26.1** in `C:\Users\james\.wokwi\bin` (on User PATH). Installed
+        via `iwr https://wokwi.com/ci/install.ps1 -useb | iex` (**NOT npm** — the
+        npm package 404s). `mcp` subcommand confirmed. **Needs `WOKWI_CLI_TOKEN`**
+        (from wokwi.com CI dashboard) before it can simulate — not yet obtained.
+      - **atopile 0.12.5** via `uv tool install atopile` (`ato` on PATH).
+      - **kicad-mcp** (lamaalrajih) NOT installed but requirements satisfied
+        (uv + Python ≥3.10 present; shells out to `kicad-cli`, no KiCad-bundled
+        Python needed). Wire up in a follow-up: `make install` → point MCP client
+        at its `.venv` python + `main.py`, set `KICAD_SEARCH_PATHS` in `.env`.
    3. Wokwi sim of the current S3 build (firmware + `diagram.json`) as the wiring
       ground-truth before schematic capture.
    4. Draft schematic (atopile `.ato` or KiCad) with **placeholder** microSD/IR-TX
