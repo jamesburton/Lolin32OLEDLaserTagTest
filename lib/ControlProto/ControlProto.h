@@ -249,6 +249,7 @@ enum class CommandKind {
   Hit,      ///< `{ "cmd": "hit", "team": <int>, "damage": <int> }`
   Debug,    ///< `{ "cmd": "debug", "value": <int> }`
   Reset,    ///< `{ "cmd": "reset" }` — revive to full health (CTL reset parity)
+  Fire,     ///< `{ "cmd": "fire", "team": <int>, "damage": <int> }` — emit a Vatos IR shot
 };
 
 /// <summary>Parsed POST /api/command body (contract §2.2 CommandDoc).</summary>

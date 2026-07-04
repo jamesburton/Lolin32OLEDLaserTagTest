@@ -164,7 +164,14 @@ the full ConfigDoc with `ownTeam:3, brightness:20` and other fields unchanged.
 { "cmd": "bright", "value": 20 }
 { "cmd": "hit", "team": 2, "damage": 2 }
 { "cmd": "debug", "value": 1 }
+{ "cmd": "reset" }
+{ "cmd": "fire", "team": 3, "damage": 2 }
 ```
+
+`fire` emits a Vatos IR shot of the given team (1–4) + damage (1–4) from the
+device's IR transmitter — manual trigger only (message/API); the device never
+fires on its own. Returns **400** if the board has no IR transmitter or the
+team/damage is out of range.
 
 `deviceId` derives from the lower 3 bytes of the WiFi MAC, lowercase hex, 6
 chars. `teamColours` keys are team indices as JSON strings; values are

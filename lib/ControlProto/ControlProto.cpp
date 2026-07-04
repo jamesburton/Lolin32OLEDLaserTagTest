@@ -353,6 +353,12 @@ bool parseCommand(const char *json, CommandDoc &out) {
     out.kind = CommandKind::Reset;
     return true;
   }
+  if (strcmp(cmd, "fire") == 0) {
+    out.kind = CommandKind::Fire;
+    out.team = doc["team"].as<int>();
+    out.damage = doc["damage"].as<int>();
+    return true;
+  }
   return false;
 }
 

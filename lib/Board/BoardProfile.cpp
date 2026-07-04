@@ -19,7 +19,7 @@ static const BoardProfile kLolin32 = {
 
 static const BoardProfile kS3Matrix = {
     /*name*/ "s3-matrix",
-    /*irRxPin*/ 1, /*irTxPin*/ -1,
+    /*irRxPin*/ 1, /*irTxPin*/ 37,
     /*hitDisplay*/ HitDisplayKind::Ws2812Matrix,
     /*matrixPin*/ 14, /*matrixW*/ 8, /*matrixH*/ 8, /*matrixOrder*/ ColourOrder::Rgb,
     /*rgbR*/ -1, /*rgbG*/ -1, /*rgbB*/ -1, /*rgbCommonAnode*/ false,

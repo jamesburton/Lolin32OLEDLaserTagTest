@@ -34,6 +34,7 @@
 
 #include <ControlProto.h>
 #include <IrFramer.h>
+#include <IrTx.h>
 #include <TagNet.h>
 #include <Vatos.h>
 
@@ -300,6 +301,15 @@ bool runCommand(const cp::CommandDoc &cmd) {
     handleControl(c);
     return true;
   }
+  case cp::CommandKind::Fire:
+    // Emit a Vatos IR shot of the given team (1-4) + damage (1-4). Manual
+    // trigger only (message/API) — the device never fires on its own.
+    if (!IrTx::present() || cmd.team < 1 || cmd.team > 4 || cmd.damage < 1 ||
+        cmd.damage > 4) {
+      return false;
+    }
+    IrTx::fire(cp::tagEventFromVatosShot(cmd.team, cmd.damage));
+    return true;
   case cp::CommandKind::None:
     return false;
   }
@@ -333,6 +343,21 @@ void onLine(const char *line) {
     }
   } else if (strncmp(line, "debug ", 6) == 0) {
     debugFrames = atoi(line + 6) != 0;
+  } else if (strncmp(line, "fire ", 5) == 0) {
+    // Bench/host helper: transmit a Vatos shot (team 1-4, damage 1-4) over IR.
+    // Manual trigger only; the device has no automatic fire.
+    int t = 0, d = 0;
+    if (sscanf(line + 5, "%d %d", &t, &d) == 2 && t >= 1 && t <= 4 && d >= 1 &&
+        d <= 4) {
+      if (IrTx::present()) {
+        IrTx::fire(cp::tagEventFromVatosShot(t, d));
+        Serial.printf("fired team=%d damage=%d\n", t, d);
+      } else {
+        Serial.println("fire: no IR transmitter on this board");
+      }
+    } else {
+      Serial.println("usage: fire <team 1-4> <damage 1-4>");
+    }
   } else if (strncmp(line, "sfx ", 4) == 0) {
     // Bench helper: play a bank entry on demand (bypasses game state) so any
     // sound — including the death cue — can be auditioned without a full game.
@@ -575,6 +600,7 @@ void setup() {
   TagNet::onHttpSetup(registerRoutes); // /api/* REST routes
 
   IrFramer::begin(IR_PIN);
+  IrTx::begin(profile); // IR transmit (irTxPin=37 on the S3); no-op if absent
   randomSeed(esp_random());
 
   vis = Vis::Rainbow;

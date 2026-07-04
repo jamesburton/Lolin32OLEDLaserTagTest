@@ -332,6 +332,14 @@ void test_parse_command_hit() {
   TEST_ASSERT_EQUAL_INT(2, c.damage);
 }
 
+void test_parse_command_fire() {
+  CommandDoc c;
+  TEST_ASSERT_TRUE(parseCommand("{\"cmd\":\"fire\",\"team\":3,\"damage\":2}", c));
+  TEST_ASSERT_EQUAL_INT((int)CommandKind::Fire, (int)c.kind);
+  TEST_ASSERT_EQUAL_INT(3, c.team);
+  TEST_ASSERT_EQUAL_INT(2, c.damage);
+}
+
 void test_parse_command_debug() {
   CommandDoc c;
   TEST_ASSERT_TRUE(parseCommand("{\"cmd\":\"debug\",\"value\":1}", c));
@@ -397,6 +405,7 @@ int main(int, char **) {
   RUN_TEST(test_parse_command_identify);
   RUN_TEST(test_parse_command_bright);
   RUN_TEST(test_parse_command_hit);
+  RUN_TEST(test_parse_command_fire);
   RUN_TEST(test_parse_command_debug);
   RUN_TEST(test_parse_command_unknown_rejected);
   RUN_TEST(test_tag_event_from_vatos_shot);
