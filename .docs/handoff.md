@@ -370,17 +370,30 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
       (offline, no LCSC picker). Toolchain fully validated on this box; `ato build`
       needs env `PYTHONUTF8=1 PYTHONIOENCODING=utf-8 NO_COLOR=1 ATO_NON_INTERACTIVE=1`
       (else cp1252 emoji crash); the "KiCad plugin/config" warning is GUI-only,
-      **non-blocking**. **Caveats to fix (all point to atopile 0.12.5 being 3
-      versions behind 0.15.7 — upgrade in progress):** (a) designators render
-      `U1-U37`, real refdes preserved in each part's `atopile_address` property;
-      (b) `bom.csv` empty (footprint-only parts, not LCSC-picked) — full 37-line
-      BOM is in the build report; (c) two jumper footprints patched locally
-      (`footprints/LocalJumper.pretty`, KiCad-10 `allow_soldermask_bridges` unparsed
-      by 0.12.5).
-   5. **GATE (pins now FROZEN — microSD 33-36, IR-TX 37 both landed):** remaining
-      = open `default.kicad_pcb` in the KiCad GUI (launch KiCad once so atopile's
-      sync plugin hooks in) → placement, routing, DRC, fab export. This is the
-      manual, non-automatable step.
+      **non-blocking**. **⚠ Toolchain pin: `atopile==0.12.5` on `--python 3.13`**
+      (`uv tool install "atopile==0.12.5" --python 3.13 --force`). **Do NOT upgrade
+      to 0.15.7** — tested 2026-07-05, it *regressed*: emptied
+      `layouts/default/default.kicad_pcb` to 0 footprints (its layout-sync needs the
+      KiCad GUI plugin, uninstallable until KiCad is launched once) AND didn't fix
+      the caveats. A naive rollback also broke atopile under **Python 3.14**
+      (`TypeError` in typer) — hence the explicit `--python 3.13` pin. Layout was
+      restored from git. **Caveats — MODELING consequences, NOT a version bug**
+      (0.15.7 left them UNCHANGED, proving they come from the offline
+      custom-`component` approach): (a) designators render `U1-U37` — real refdes preserved in
+      each part's `atopile_address` property; (b) `bom.csv` empty AND electrical
+      values (470Ω/33Ω/470µF…) live only in `.ato` comments, NOT the netlist
+      (custom footprint-only components carry no value/LCSC part) — full 37-line
+      BOM lives in `pcb-blocks.md`; (c) two jumper footprints patched locally
+      (`footprints/LocalJumper.pretty`, KiCad-10 `allow_soldermask_bridges`).
+      A stdlib-generics probe (`Resistor`/`Capacitor` with real values) confirmed
+      the alt path yields correct `R1`/`C1` designators + values + auto-LCSC BOM —
+      but it forces **SMD** parts, wrong for this hand-soldered board.
+   5. **GATE (pins FROZEN — microSD 33-36, IR-TX 37 landed). DECISION (2026-07-05):
+      keep THT hand-build; close all 3 caveats IN KiCad during layout** — rename
+      designators via the `atopile_address` map, set values by hand from
+      `pcb-blocks.md`, export the BOM from KiCad. Remaining = open
+      `default.kicad_pcb` in the KiCad GUI (launch KiCad once so atopile's sync
+      plugin hooks in) → placement, routing, DRC, fab export. Non-automatable.
 
    Open questions: which KiCad MCP server is most reliable; atopile vs SKiDL vs
    raw KiCad once registry coverage is known; one board for both ESP32s or
