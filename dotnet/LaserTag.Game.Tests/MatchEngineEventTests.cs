@@ -28,6 +28,31 @@ public sealed class RecordingMode : IGameMode
     public MatchResult? CheckEnd(MatchContext context) => null;
 }
 
+/// <summary>Ends the match as soon as any team reaches 3 points.</summary>
+public sealed class FirstToThreeMode : IGameMode
+{
+    public string Name => "first-to-three";
+
+    public TimeSpan? MatchDuration => null;
+
+    public void OnMatchStart(MatchContext context)
+    {
+    }
+
+    public void OnHit(MatchContext context, HitEvent hit) => context.AddScore(hit.ShooterTeam, 1);
+
+    public void OnDeviceState(MatchContext context, StateEvent state, Participant participant)
+    {
+    }
+
+    public void OnTick(MatchContext context)
+    {
+    }
+
+    public MatchResult? CheckEnd(MatchContext context) =>
+        context.Scores.Where(kv => kv.Value >= 3).Select(kv => (MatchResult?)new MatchResult(kv.Key)).FirstOrDefault();
+}
+
 public class MatchEngineEventTests
 {
     private readonly FakeControlSender _sender = new();
@@ -126,5 +151,35 @@ public class MatchEngineEventTests
 
         Assert.Single(_mode.States);
         Assert.Equal(32, engine.Snapshot().Participants.Single().Hp);
+    }
+
+    [Fact]
+    public void CheckEnd_SeesScoreAddedBySameEvent()
+    {
+        var mode = new FirstToThreeMode();
+        var engine = new MatchEngine(_sender, () => _clock.Now);
+        engine.StartMatch(mode, [Msg.Hb("a", 1), Msg.Hb("b", 2)]);
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        engine.Tick();
+        _sender.Sent.Clear();
+
+        engine.OnMessage(Msg.Hit("a", 2, 1, hpAfter: 29));
+        engine.OnMessage(Msg.Hit("a", 2, 1, hpAfter: 26));
+        engine.OnMessage(Msg.Hit("a", 2, 1, hpAfter: 23));
+
+        Assert.Equal(MatchPhase.Finished, engine.Phase);
+        Assert.Equal(2, engine.Snapshot().Winner);
+    }
+
+    [Fact]
+    public void StateEvent_FatalHp_MarksDeadWithDiedAt()
+    {
+        MatchEngine engine = RunningEngine(Msg.Hb("a", 1, host: "lasertag-a"));
+
+        engine.OnMessage(new StateEvent { Source = "lasertag-a", S = "dead", Hp = 0, Ts = 2000 });
+
+        Participant a = engine.Snapshot().Participants.Single();
+        Assert.False(a.Alive);
+        Assert.Equal(_clock.Now, a.DiedAt);
     }
 }

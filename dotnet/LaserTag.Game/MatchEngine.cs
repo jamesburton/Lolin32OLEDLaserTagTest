@@ -216,7 +216,12 @@ public sealed class MatchEngine
         matchStartedAt: _matchStartedAt,
         startHp: _startHp,
         participants: [.. _participants.Values],
-        scores: new Dictionary<int, int>(_scores),
+
+        // Pass the live dictionary directly (exposed as IReadOnlyDictionary on
+        // MatchContext, so modes still can't mutate it): AddScore mutates
+        // _scores via the closure below, and a same-event CheckEnd must see
+        // that update immediately rather than a stale copy.
+        scores: _scores,
         addScore: (team, pts) => _scores[team] = _scores.GetValueOrDefault(team) + pts,
         send: Send);
 
@@ -251,11 +256,12 @@ public sealed class MatchEngine
 
         if (state.Hp is { } hp)
         {
+            bool died = hp <= 0 && participant.Alive;
             _participants[participant.Id] = participant with
             {
                 Hp = hp,
                 Alive = hp > 0,
-                DiedAt = hp > 0 ? null : participant.DiedAt,
+                DiedAt = died ? _clock() : (hp > 0 ? null : participant.DiedAt),
             };
         }
 
