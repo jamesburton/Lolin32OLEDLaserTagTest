@@ -59,6 +59,23 @@ codec for the control plane).
 
 ## Hardware
 
+### Carrier PCB (ESP32-S3-Matrix target)
+
+A custom 100×80 mm 2-layer carrier board for the S3 target lives in
+[`hardware/lasertag-carrier/`](hardware/lasertag-carrier/): socketed
+ESP32-S3-Matrix, MAX98357A audio, microSD, IR RX + transistor IR-TX driver,
+WS2812 strip output, OLED header, GP2 role selector, power switch and M3
+mounting holes.
+
+- **How it was made** (code → perf-board → Gerbers, tools/tips/gotchas):
+  [`PCB_FROM_PLATFORMIO.md`](PCB_FROM_PLATFORMIO.md)
+- **Fab package** (PCBWay-ready Gerber zip):
+  [`hardware/lasertag-carrier/fab/lasertag-carrier-rev1-gerbers.zip`](hardware/lasertag-carrier/fab/lasertag-carrier-rev1-gerbers.zip),
+  also attached to the
+  [`pcb-carrier-rev1` release](../../releases/tag/pcb-carrier-rev1)
+- **BOM**: [`hardware/lasertag-carrier/bom.csv`](hardware/lasertag-carrier/bom.csv);
+  circuit spec: `.docs/pcb-blocks.md`
+
 ### Lolin32 OLED (monitor / decoder / transmitter)
 
 | Function | Pin | Notes |

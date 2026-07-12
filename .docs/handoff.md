@@ -7,6 +7,15 @@ TX) → V2 control plane (REST+UDP, .NET host) → board-capability HAL → game
 Codes & features behind interfaces so other guns/protocols and boards plug in.
 
 ## Current State
+
+### PCB ORDERED (2026-07-12) — carrier rev1
+**10× lasertag-carrier rev1 (100×80mm) ordered from PCBWay:**
+https://member.pcbway.com/Order/GroupDetail?GroupId=1768070 *(temporary
+tracking link — remove once boards arrive and are verified).*
+Ordered artifact: `hardware/lasertag-carrier/fab/lasertag-carrier-rev1-gerbers.zip`
+(also attached to the `pcb-carrier-rev1` GitHub release). Board was DRC-clean
+(0 unconnected / 0 electrical; one documented kicad-cli phantom silk warning).
+Journey + gotchas: `PCB_FROM_PLATFORMIO.md` (repo root, linked from README).
 **This session's audio work is UNCOMMITTED** (working tree has changes; user
 commits only when asked). Everything below "Layers complete" is merged to `main`
 (latest `126f564`, PR #1); the **MAX98357A I2S sound + siren/death SFX bank +
