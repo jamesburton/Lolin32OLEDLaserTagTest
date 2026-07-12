@@ -71,7 +71,7 @@ Layers complete and on `main`:
    top-down as health drops (outer columns stay rainbow). Row-major pixel mapping
    confirmed correct on hardware.
 
-**Tests:** native 48 (test_board 11 + test_controlproto 29 + test_storage 8); .NET 131;
+**Tests:** native 49 (test_board 11 + test_controlproto 30 + test_storage 8); .NET 131;
 all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
 
 ## Hardware (both live on HAL firmware, both OTA-flashable)
