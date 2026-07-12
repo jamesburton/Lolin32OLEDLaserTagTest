@@ -4157,7 +4157,7 @@
 		(uuid "1c26db83-5e3a-45ef-8487-077f4642524b")
 		(at 168 76)
 		(property "Reference" "R2"
-			(at 5.08 -2.37 0)
+			(at 5.08 3.2 0)
 			(layer "F.SilkS")
 			(uuid "ea9c6b27-e405-4488-a747-f812910d7d85")
 			(effects
