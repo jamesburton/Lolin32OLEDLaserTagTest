@@ -16,13 +16,13 @@ Ordered artifact: `hardware/lasertag-carrier/fab/lasertag-carrier-rev1-gerbers.z
 (also attached to the `pcb-carrier-rev1` GitHub release). Board was DRC-clean
 (0 unconnected / 0 electrical; one documented kicad-cli phantom silk warning).
 Journey + gotchas: `PCB_FROM_PLATFORMIO.md` (repo root, linked from README).
-**This session's audio work is UNCOMMITTED** (working tree has changes; user
-commits only when asked). Everything below "Layers complete" is merged to `main`
-(latest `126f564`, PR #1); the **MAX98357A I2S sound + siren/death SFX bank +
-selectable lives** sits on top, unstaged. All native tests pass (38 then; now 48 — see Tests below), the
-`esp32-s3-matrix` env builds, and the S3 board is flashed with it over USB (COM6).
+The audio work is now **committed to `main`** (`90f003a` "Add MAX98357A I2S
+sound: siren bank, per-team/death cues, selectable lives"), as is the microSD
+spike implementation and all PCB work — the working tree is clean. All native
+tests pass (48 — see Tests below), the `esp32-s3-matrix` env builds, and the
+S3 board is flashed with it over USB (COM6).
 
-### This session — sound on the ESP32-S3-Matrix (uncommitted)
+### Sound on the ESP32-S3-Matrix (committed `90f003a`)
 Wired a **MAX98357A I2S amp** to the S3 and built procedural SFX with per-team +
 death assignment. End-to-end verified from the serial log (mapping, death,
 reset); only the death-sound *character* is pending the user's ears (they last
@@ -245,7 +245,7 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
 - WiFi 2.4GHz `CommunityFibre10Gb_28750`; creds in NVS (survive OTA). Set via
   `tools/set-wifi.ps1 -Port COMx -Ssid ... -Password ...`.
 
-## Recent Changes (this session — uncommitted)
+## Recent Changes (audio session — since committed as `90f003a`)
 - `lib/Board/BoardProfile.{h,cpp}` — added `i2sBclkPin/i2sWsPin/i2sDinPin`
   (S3=38/39/40, Lolin32=-1); S3 profile `audio=I2sDac`; 3 pins NVS-overridable.
 - `lib/Sound/Sound.{h,cpp}` — full I2S DAC playback; `playIndex(int)` (range-
@@ -282,13 +282,16 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
    mount/list/playback and no-card/no-file error paths. Design spec and plan:
    `docs/superpowers/specs/2026-06-29-microsd-spike-design.md`,
    `docs/superpowers/plans/2026-06-29-microsd-spike.md`.
-2. **Commit this session's audio work** when the user OKs (personal repo → commit
-   to `main` directly). Suggested message scope: "Add MAX98357A I2S sound: siren
-   bank + per-team/death cues, selectable lives". Note `SfxData.h` is generated.
+2. ✅ **DONE:** audio work committed to `main` (`90f003a`). `SfxData.h` is
+   generated (`tools/gen_sfx.py`).
 3. **Death-sound polish** if the user wants it — tune in `tools/gen_sfx.py`
    `synth_death()` (woo count/speed, descent depth, tail), regen, reflash.
    Optionally wire Start/Respawn cues (currently silent on the DAC board).
-4. **Update `esp32-s3-matrix-ota` `upload_port` to 192.168.1.28** before any OTA.
+4. ✅ **DONE (2026-07-12):** `esp32-s3-matrix-ota` `upload_port` set to the
+   last-seen IP (**192.168.1.33**); stale "mDNS doesn't resolve" notes fixed in
+   `platformio.ini`, `README.md`, `tools/README.md` (mDNS resolves for
+   ping/REST; espota still needs the IP). Re-check the IP before any OTA — the
+   matrix roams via DHCP.
 5. **Retaliation mode (Spec 2)** — already brainstormed (decisions captured in
    chat, not yet specced): on a hit, the target fires damage-1 Vatos shots in
    **every colour EXCEPT the shooter's** (randomised order, timed to the triple

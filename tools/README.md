@@ -65,8 +65,9 @@ wifi-save
 ```
 
 Other TagNet commands: `wifi-status`, `wifi-clear`. Once connected the board
-reports its IP — use that **IP** for OTA and monitoring (mDNS
-`lasertag-<board>.local` is best-effort and does not resolve on every host).
+reports its IP — use that **IP** for OTA (mDNS `lasertag-<board>.local`
+resolves fine for ping/REST on this host, but espota is unreliable with mDNS
+names, so OTA should always target the current IP).
 
 ## TagMonitor
 

@@ -67,6 +67,8 @@ ESP32-S3-Matrix, MAX98357A audio, microSD, IR RX + transistor IR-TX driver,
 WS2812 strip output, OLED header, GP2 role selector, power switch and M3
 mounting holes.
 
+![lasertag-carrier rev1 front render](hardware/lasertag-carrier/board-render-rev1.png)
+
 - **How it was made** (code → perf-board → Gerbers, tools/tips/gotchas):
   [`PCB_FROM_PLATFORMIO.md`](PCB_FROM_PLATFORMIO.md)
 - **Fab package** (PCBWay-ready Gerber zip):
@@ -195,14 +197,15 @@ GPIO0 jumper:
 
 ```sh
 pio run -e lolin32-ota -t upload          # -> 192.168.1.48 (lasertag-lolin32)
-pio run -e esp32-s3-matrix-ota -t upload  # -> 192.168.1.24 (lasertag-matrix)
+pio run -e esp32-s3-matrix-ota -t upload  # -> 192.168.1.33 (lasertag-matrix)
 ```
 
-Both `*-ota` envs target the boards' **IP addresses** in `platformio.ini`,
-because mDNS (`lasertag-*.local`) does not resolve on every host (notably this
-Windows dev machine). Set a DHCP reservation, or update `upload_port` if an IP
-changes. OTA can take several minutes over a weak link (low RSSI), but is
-reliable.
+Both `*-ota` envs target the boards' **IP addresses** in `platformio.ini`.
+mDNS (`lasertag-*.local`) resolves fine for ping/REST on this dev machine, but
+espota is unreliable with mDNS names, so OTA sticks to IPs — resolve the
+current one with `ping lasertag-matrix.local` (the matrix roams via DHCP) and
+update `upload_port` if it changed, or set a DHCP reservation. OTA can take
+several minutes over a weak link (low RSSI), but is reliable.
 
 ### Telemetry monitoring
 

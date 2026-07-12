@@ -68,8 +68,11 @@ the KiCad GUI is still sensible before ordering.)
   what `kicad-cli` emits by default and what PCBWay expects.
 
 The ready-to-upload archive lives at
-`hardware/lasertag-carrier/fab/lasertag-carrier-rev1-gerbers.zip` and is also
-attached to the `pcb-carrier-rev1` GitHub release.
+[`hardware/lasertag-carrier/fab/lasertag-carrier-rev1-gerbers.zip`](hardware/lasertag-carrier/fab/lasertag-carrier-rev1-gerbers.zip)
+and is also attached to the `pcb-carrier-rev1` GitHub release. This is the
+rev1 front render as ordered (from the KiCad → PCBWay upload):
+
+![lasertag-carrier rev1 front render](hardware/lasertag-carrier/board-render-rev1.png)
 
 ## Gotchas (each one cost real time)
 
