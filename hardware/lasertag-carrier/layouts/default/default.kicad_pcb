@@ -3583,7 +3583,7 @@
 		(descr "1x-dip-switch SPST , Slide, row spacing 7.62 mm (300 mils), body size 9.78x4.72mm (see e.g. https://www.ctscorp.com/wp-content/uploads/206-208.pdf)")
 		(tags "DIP Switch SPST Slide 7.62mm 300mil")
 		(property "Reference" "SW2"
-			(at 3.81 -3.42 0)
+			(at 3.8 0 0)
 			(layer "F.SilkS")
 			(uuid "ac2161fd-879b-4bf7-8feb-37bd0e75e308")
 			(effects
@@ -3890,7 +3890,7 @@
 		(uuid "1a1aaa55-acec-4bf4-9660-14094642524b")
 		(at 131 90)
 		(property "Reference" "J9"
-			(at 3.199999 -4.4 0)
+			(at 0 -4.5 0)
 			(layer "F.SilkS")
 			(uuid "5ce7a6c3-f008-4a03-927e-182df17249ab")
 			(effects
@@ -11989,6 +11989,7 @@
 		(at 112 133)
 		(property "Reference" "J0"
 			(at 1.27 -4.22 0)
+			(hide yes)
 			(layer "F.SilkS")
 			(uuid "5b2f00a4-a4da-447d-9253-3ca0808d0cb1")
 			(effects
@@ -16715,7 +16716,7 @@
 		)
 	)
 	(gr_text "1000u"
-		(at 183.5 100.5 0)
+		(at 181.6 100.5 0)
 		(layer "F.SilkS")
 		(uuid "16f43390-a3fd-4e6a-a45e-7ffc5f3a8855")
 		(effects
@@ -20097,4 +20098,34 @@
 		)
 	)
 	(embedded_fonts no)
+	(gr_text "ESP32-MATRIX"
+		(at 150 96 0)
+		(layer "F.SilkS")
+		(effects
+			(font
+				(size 1.2 1.2)
+				(thickness 0.2)
+			)
+		)
+	)
+	(gr_text "LaserTag Target"
+		(at 150 100 0)
+		(layer "F.SilkS")
+		(effects
+			(font
+				(size 1.2 1.2)
+				(thickness 0.2)
+			)
+		)
+	)
+	(gr_text "by James Burton"
+		(at 150 103.5 0)
+		(layer "F.SilkS")
+		(effects
+			(font
+				(size 1.0 1.0)
+				(thickness 0.15)
+			)
+		)
+	)
 )
