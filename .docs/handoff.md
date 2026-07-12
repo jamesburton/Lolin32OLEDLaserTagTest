@@ -263,6 +263,14 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   `startHp` validation test (38 total then; now 48 — see Tests above).
 
 ## Next Steps
+0. **When PCBWay boards arrive (order: 10× rev1, link at top):** visually check
+   against `board-front.svg`; buy/gather parts per `hardware/lasertag-carrier/bom.csv`
+   (BUY items: 100nF ceramics ×3, 2N2222A, sockets/headers; most passives in
+   stock); assemble one board (square pad = pin 1 everywhere; module 5V corner
+   to J1's square pad; MAX98357A LRC into J3's square end; microSD 3V3 into
+   J5's); bring-up: 5V current check before seating modules → seat S3 →
+   `fire`/`sdplay`/`sfx` smoke tests. Then remove the temporary order-tracking
+   link from Current State.
 1. **microSD spike — implementation complete, hardware verification pending.** Built:
    native-testable WAV parser (`lib/Storage`), BoardProfile SD pins (CS=GP36,
    MOSI=GP34, MISO=GP35, SCK=GP33, ESP32-S3-Matrix only), SdCard wrapper
@@ -397,17 +405,29 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
       A stdlib-generics probe (`Resistor`/`Capacitor` with real values) confirmed
       the alt path yields correct `R1`/`C1` designators + values + auto-LCSC BOM —
       but it forces **SMD** parts, wrong for this hand-soldered board.
-   5. **GATE (pins FROZEN — microSD 33-36, IR-TX 37 landed). DECISION (2026-07-05):
-      keep THT hand-build; close all 3 caveats IN KiCad during layout** — rename
-      designators via the `atopile_address` map, set values by hand from
-      `pcb-blocks.md`, export the BOM from KiCad. Remaining = open
-      `default.kicad_pcb` in the KiCad GUI (launch KiCad once so atopile's sync
-      plugin hooks in) → placement, routing, DRC, fab export. Non-automatable.
+   5. ✅ **DONE (2026-07-12) — and it WAS automatable end-to-end.** All three
+      caveats closed by script (designators from `atopile_address`, values +
+      BOM from spec), then: 100×80mm board (grew from 75×50 — same fab price
+      tier, killed all silk collisions), directed placement per user floor
+      plan, **Freerouting** autoroute (pcbnew DSN→SES round trip, GND pour
+      added post-route), full silkscreen pass (pin-1/signal labels, values
+      in-body, socket names under breakout bodies, board titles), DRC to
+      **0 unconnected / 0 electrical**, Gerbers+drill exported and **ordered**
+      (see PCB ORDERED at top). Scope deltas during layout: **level-shifter
+      block moved off-board** (standalone Block 7; J8 output feeds it by
+      cable), **J4 speaker header removed** (MAX98357A module has its own
+      terminals; nets went nowhere), **added SW2 power switch + JP6 always-on
+      bridge, J14+R9 activity-LED header (GP7), H1-H4 M3 holes**. D1 = the
+      off-board IR LED (on a cable into J7) — that's why the board starts at
+      D2. **The `.kicad_pcb` is now the source of truth; NEVER `ato build`
+      again** (regenerates layout). Full toolchain write-up + every gotcha:
+      **`PCB_FROM_PLATFORMIO.md`** (repo root; distilled to reusable skills in
+      `~/on-demand/PCBs/`). Authoritative BOM = `hardware/lasertag-carrier/bom.csv`
+      (32 BOM lines / 38 fitted parts; supersedes the lean table above for the carrier build).
 
-   Open questions: which KiCad MCP server is most reliable; atopile vs SKiDL vs
-   raw KiCad once registry coverage is known; one board for both ESP32s or
-   per-board carriers; connector standardisation (e.g. Qwiic/STEMMA for the I2C
-   OLED).
+   Open questions (all deferred until boards arrive): assemble + bring-up;
+   build the standalone level-shifter board if ring/status LEDs wanted;
+   connector standardisation (Qwiic/STEMMA) for a future rev.
 
 ## User prefs
 Concise/direct; DRY + interfaces for extensibility; markdown for tickets/PRs;
