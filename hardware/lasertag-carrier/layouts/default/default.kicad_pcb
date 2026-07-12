@@ -16492,17 +16492,7 @@
 			)
 		)
 	)
-	(gr_text "PWR"
-		(at 117 124 0)
-		(layer "F.SilkS")
-		(uuid "82a24fc4-8a3a-4501-8b34-83d5d40e185d")
-		(effects
-			(font
-				(size 0.8 0.8)
-				(thickness 0.13)
-			)
-		)
-	)
+
 	(gr_text "MUTE"
 		(at 118.5 89.6 0)
 		(layer "F.SilkS")
@@ -16725,7 +16715,7 @@
 		)
 	)
 	(gr_text "1000u"
-		(at 157 82.5 0)
+		(at 183.5 100.5 0)
 		(layer "F.SilkS")
 		(uuid "16f43390-a3fd-4e6a-a45e-7ffc5f3a8855")
 		(effects
@@ -16802,7 +16792,7 @@
 		)
 	)
 	(gr_text "100n"
-		(at 178.5 113.2 0)
+		(at 178.5 116 0)
 		(layer "F.SilkS")
 		(uuid "51652730-f846-42e7-a765-c19dc5a8aa65")
 		(effects
@@ -16846,7 +16836,7 @@
 		)
 	)
 	(gr_text "WS2812"
-		(at 194 92.6 0)
+		(at 194 91.2 0)
 		(layer "F.SilkS")
 		(uuid "f14e4d04-9ca4-49ab-9ecd-87d5dee6294e")
 		(effects
@@ -16912,7 +16902,7 @@
 		)
 	)
 	(gr_text "microSD"
-		(at 194 122 90)
+		(at 190.8 122 90)
 		(layer "F.SilkS")
 		(uuid "26c48b33-c84e-4f2b-8692-4503bdf604cb")
 		(effects
@@ -16945,7 +16935,7 @@
 		)
 	)
 	(gr_text "5V IN"
-		(at 113.3 126.6 0)
+		(at 113.3 138.4 0)
 		(layer "F.SilkS")
 		(uuid "19b4990c-6fa0-496d-ad62-636604abb160")
 		(effects
