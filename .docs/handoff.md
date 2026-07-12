@@ -303,6 +303,21 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
 7. ✅ **DONE:** .NET host CLI delivered by Spec A (spec: `docs/superpowers/specs/2026-07-12-game-manager-design.md`; plan: `docs/superpowers/plans/2026-07-12-game-manager.md`). `LaserTag.Game` + `LaserTag.Host` implement match orchestration + CTL grammar v2 (countdown/gameover/activate/deactivate/id=). UDP CTL sender (subnet broadcast, 3× repeat) in `UdpControlSender`. FIRST: firmware id= filter on CTL (see spec post-impl notes) — current firmware ignores unknown CTL keys including id=, so id=-addressed reset/start is applied by every device, not just the target; per-player respawns/rejoin re-issues are unsafe for multi-device play until this lands. Remaining follow-ups: Spec B firmware pass (countdown/gameover/activate/deactivate/id= handling + OLED-health), Spec C hunt+retaliation modes, Claude-skill wrapper over the console.
 8. Housekeeping: revert matrix dark time to 5–15 s before real play; add an
    `/api/*` REST section to the README if desired.
+8a. **Damage multiplier (requested 2026-07-12, design pending user answers):**
+   firmware-side option `1x|2x|4x|8x|16x|custom` — hp loss = dmg × multiplier
+   (16x: a dmg-2 rocket wipes startHp 32 in one hit; 8x: two rockets). Possibly
+   per-team as a handicap (open: keyed by shooter team = damage dealt, vs
+   victim team = damage taken). Plumb like `startHp`: ConfigDoc + NVS + REST
+   PATCH + serial verb; per-team map would mirror `teamSfx`.
+8b. **Configurable sound sources (requested 2026-07-12):** replace hardcoded
+   SD names (`sdplay` plays fixed `/sfx/test.wav` in `src/matrix_main.cpp`)
+   with path-based config; support baked bank + microSD paths, and consider
+   PSRAM caching of SD clips (S3 has 2 MB PSRAM) so playback needn't re-read
+   the card. Candidate ConfigDoc shape: per-event sound refs (`teamSfx`/
+   `deathSfx`/future `gameoverSfx`) accepting either a bank index or a path.
+   First real clip staged: `assets/sfx/quack-attack{,-3s}.wav` (16 kHz mono
+   s16 from the user's MP3; 3 s trim fits the ~5 s idle WDT — the full 10 s
+   clip would trip it with today's blocking playback).
 9. **PCB design & testing — RESEARCH + PLANNING PHASE (gated on hardware freeze).**
    **→ Full design notes: `.docs/pcb-design.md`** (toolchain, single-source→two-
    outputs architecture, config plumbing, pin rules + provisional map, connectors,
