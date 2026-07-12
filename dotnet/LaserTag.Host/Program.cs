@@ -11,7 +11,13 @@ IPEndPoint? broadcast = null;
 int flag = Array.IndexOf(args, "--broadcast");
 if (flag >= 0 && flag + 1 < args.Length)
 {
-    broadcast = new IPEndPoint(IPAddress.Parse(args[flag + 1]), UdpTelemetryService.Port);
+    if (!IPAddress.TryParse(args[flag + 1], out IPAddress? parsed))
+    {
+        AnsiConsole.MarkupLineInterpolated($"[red]Invalid --broadcast address: {args[flag + 1]}[/]");
+        return 1;
+    }
+
+    broadcast = new IPEndPoint(parsed, UdpTelemetryService.Port);
 }
 
 broadcast ??= BroadcastAddress.DiscoverLocalBroadcastEndpoint(UdpTelemetryService.Port);

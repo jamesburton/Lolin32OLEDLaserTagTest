@@ -58,6 +58,7 @@ public sealed class GameService
     {
         MatchPhase before, after;
         int? winner = null;
+        List<string> offlineIds = [];
         lock (_gate)
         {
             foreach (RosterEntry entry in _roster.GetAll())
@@ -66,7 +67,7 @@ public sealed class GameService
                 if (wasOnline && !entry.Online)
                 {
                     _engine.MarkOffline(entry.Id);
-                    Event?.Invoke($"OFFLINE {entry.Id}");
+                    offlineIds.Add(entry.Id);
                 }
 
                 _lastOnline[entry.Id] = entry.Online;
@@ -79,6 +80,14 @@ public sealed class GameService
             {
                 winner = _engine.Snapshot().Winner;
             }
+        }
+
+        // Console I/O (Event subscribers) must never run under _gate — it
+        // would stall telemetry ingest on OnMessage, which also takes the
+        // lock. Fire all events here, after release.
+        foreach (string id in offlineIds)
+        {
+            Event?.Invoke($"OFFLINE {id}");
         }
 
         if (before != after)

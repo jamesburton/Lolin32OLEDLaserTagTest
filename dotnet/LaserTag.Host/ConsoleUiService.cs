@@ -155,6 +155,11 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
         }
 
         AnsiConsole.Write(scores);
+        string aliveLine = string.Join(", ", s.Participants
+            .GroupBy(p => p.Team)
+            .OrderBy(g => g.Key)
+            .Select(g => $"team {g.Key}: {g.Count(p => p.Alive && p.Online)}"));
+        AnsiConsole.MarkupLineInterpolated($"alive: {aliveLine}");
         var players = new Table().AddColumns("id", "host", "team", "hp", "alive", "online");
         foreach (Participant p in s.Participants.OrderBy(p => p.Team))
         {

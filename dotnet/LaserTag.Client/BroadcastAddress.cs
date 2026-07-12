@@ -77,10 +77,14 @@ public static class BroadcastAddress
     /// <summary>
     /// Scans the machine's NICs for an operational IPv4 interface with an
     /// RFC 1918 private-range unicast address and returns its subnet broadcast
-    /// endpoint. Physical NICs (Ethernet, Wi-Fi) are preferred: they are
-    /// searched first, and only if none yield a suitable address are other
-    /// up, non-loopback interface types (e.g. virtual adapters, tunnels)
-    /// considered, still restricted to RFC 1918 addresses.
+    /// endpoint. Three passes, most-trustworthy first: (0) physical NICs
+    /// (Ethernet, Wi-Fi) that also report a non-empty IPv4 default gateway —
+    /// a real LAN adapter has one, virtual bridges/adapters typically don't,
+    /// so this pass resists the observed flip-flopping when a virtual
+    /// adapter (e.g. a VM bridge) also happens to carry an RFC 1918 address;
+    /// (1) any physical NIC regardless of gateway; (2) any other up,
+    /// non-loopback interface type (virtual adapters, tunnels). Every pass is
+    /// still restricted to RFC 1918 addresses.
     /// </summary>
     /// <param name="port">The UDP port to pair with the broadcast address (4210 for CTL).</param>
     /// <returns>The endpoint, or <see langword="null"/> if no suitable NIC was found.</returns>
@@ -91,10 +95,18 @@ public static class BroadcastAddress
                 nic.NetworkInterfaceType != NetworkInterfaceType.Loopback)
             .ToList();
 
-        IPEndPoint? physical = FindBroadcastEndpoint(
-            candidates.Where(nic => nic.NetworkInterfaceType is NetworkInterfaceType.Ethernet
-                or NetworkInterfaceType.Wireless80211),
+        IEnumerable<NetworkInterface> physicalNics = candidates.Where(nic =>
+            nic.NetworkInterfaceType is NetworkInterfaceType.Ethernet or NetworkInterfaceType.Wireless80211);
+
+        IPEndPoint? gatewayed = FindBroadcastEndpoint(
+            physicalNics.Where(HasIPv4DefaultGateway),
             port);
+        if (gatewayed is not null)
+        {
+            return gatewayed;
+        }
+
+        IPEndPoint? physical = FindBroadcastEndpoint(physicalNics, port);
         if (physical is not null)
         {
             return physical;
@@ -102,6 +114,16 @@ public static class BroadcastAddress
 
         return FindBroadcastEndpoint(candidates, port);
     }
+
+    /// <summary>
+    /// Determines whether a NIC reports a non-empty IPv4 default gateway —
+    /// a signal that it is a real, routed LAN adapter rather than a virtual
+    /// bridge or host-only adapter.
+    /// </summary>
+    /// <param name="nic">The network interface to test.</param>
+    /// <returns><see langword="true"/> if the NIC has an IPv4 gateway address.</returns>
+    private static bool HasIPv4DefaultGateway(NetworkInterface nic) =>
+        nic.GetIPProperties().GatewayAddresses.Any(g => g.Address.AddressFamily == AddressFamily.InterNetwork);
 
     /// <summary>
     /// Searches the given NICs' unicast addresses for the first RFC 1918
