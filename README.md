@@ -311,6 +311,13 @@ team, not a player id. CTL grammar v2 (`countdown`, `gameover`,
 `activate`/`deactivate`, optional `id=` addressing) is emitted by the host
 today; firmware behaviours for the new verbs land in Spec B.
 
+**Firmware compatibility (until Spec B):** current firmware ignores unknown
+CTL keys, so an `id=`-addressed `reset`/`start` is applied by *every* device
+on the arena, not just the targeted one — per-player respawns and rejoin
+re-issues heal the whole arena, not just the intended target. Single-target
+bench play is fine; multi-device Deathmatch/Elimination needs the Spec B
+id-filter landed on firmware first.
+
 ---
 
 ## Board capability HAL

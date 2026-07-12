@@ -158,3 +158,41 @@ next `start`.
   (Spec B), hunt + retaliation modes (Spec C), web scoreboard/daemon frontend,
   player-granularity scoring (needs gun electronics), Claude skill wrapper
   over the console commands (after the CLI exists).
+
+## Post-implementation notes (2026-07-12)
+
+Findings from the final-review fix wave on the `LaserTag.Game`/`LaserTag.Host`
+implementation, before handoff to Spec B:
+
+- **`id=` compat consequence:** current firmware ignores unknown CTL keys, so
+  it also ignores `id=` — an `id=`-addressed `reset`/`start` is applied by
+  *every* device on the arena, not just the target. This means per-player
+  respawns (Deathmatch) and rejoin re-issues (`CTL start id=` /
+  `CTL reset hp=0 id=`) currently heal or reset the *whole* arena, not the
+  intended device. Single-target bench play is unaffected; multi-device
+  Deathmatch/Elimination is not safe to run until firmware. **This makes the
+  `id=` filter Spec B's first firmware item** — everything else in Spec B can
+  follow, but per-player addressing is broken without it.
+- **Device reboot mid-match revives it:** hp is device-authoritative and
+  volatile (not persisted across reboot). A device that reboots mid-match
+  reports hp>0 on its next heartbeat and the engine treats that as the
+  documented "reboot recovery" case, sending it a plain `CTL start` — even if
+  it was dead when it went offline. This is a known limitation the host
+  cannot fix without a protocol change (e.g. the device persisting/reporting
+  its pre-reboot death); it is intentionally out of scope here. (Contrast
+  with the WiFi-blip case, which the engine does now handle correctly: a
+  device that was dead before going offline and is still hp<=0 on its rejoin
+  heartbeat gets `CTL reset hp=0 id=`, not `start` — see `MatchEngine.OnHeartbeat`.)
+- **Stale-event guard is phase-gating, not device-timestamp comparison:** the
+  engine ignores hits/state/heartbeat effects outside `Running` by gating on
+  `Phase`, not by comparing the event's `ts` (device millis, resets on
+  reboot) against a wall-clock cutoff. Device `ts` is monotonic-since-boot,
+  not comparable across devices or to host wall-clock, so phase-gating is the
+  correct mechanism here — noted so a future maintainer doesn't "fix" this
+  into a device-ts comparison that would silently break on reboot.
+- **v1 UI is REPL + on-demand score, not a live-refresh layout:** `score` is
+  a command the operator runs, not a continuously repainted scoreboard. A
+  live-refresh TUI (Spectre `Live`) was considered and deferred — the console
+  event feed (`HIT`/`STATE`/`OFFLINE`/`PHASE`/`GAME OVER`) plus on-demand
+  `score` is sufficient for the current bench-play scale and keeps the REPL
+  simple.
