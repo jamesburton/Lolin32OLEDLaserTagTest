@@ -9991,7 +9991,7 @@
 		(uuid "98288262-2a60-4f7d-a83b-14464642524b")
 		(at 146.5 63 90)
 		(property "Reference" "J6"
-			(at 1.6 -3.5 90)
+			(at 1.6 -3.5 0)
 			(layer "F.SilkS")
 			(uuid "25705a31-53af-4ec7-93a1-efd8f8e1ed69")
 			(effects
