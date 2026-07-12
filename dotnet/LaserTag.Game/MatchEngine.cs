@@ -124,15 +124,40 @@ public sealed class MatchEngine
     }
 
     /// <summary>
-    /// Feeds a parsed telemetry message into the engine (hit/state/heartbeat
-    /// handling — see the event-handling section of the spec).
+    /// Feeds a parsed telemetry message into the engine. Hits and state events
+    /// are delegated to the mode only while Running; heartbeats always refresh
+    /// the hp/online mirror (and trigger a re-issued <c>CTL start id=</c> when
+    /// a participant rejoins mid-match).
     /// </summary>
     /// <param name="message">The parsed inbound message.</param>
     public void OnMessage(UdpInboundMessage message)
     {
         ArgumentNullException.ThrowIfNull(message);
+        switch (message)
+        {
+            case HitEvent hit:
+                OnHit(hit);
+                break;
+            case StateEvent state:
+                OnState(state);
+                break;
+            case Heartbeat hb:
+                OnHeartbeat(hb);
+                break;
+        }
+    }
 
-        // Filled in by the event-handling task.
+    /// <summary>
+    /// Marks a participant offline (driven by the host's <c>DeviceRoster</c>
+    /// liveness timeouts — the engine has no timeout logic of its own).
+    /// </summary>
+    /// <param name="deviceId">The device id.</param>
+    public void MarkOffline(string deviceId)
+    {
+        if (_participants.TryGetValue(deviceId, out Participant? p))
+        {
+            _participants[deviceId] = p with { Online = false };
+        }
     }
 
     /// <summary>Takes an immutable snapshot for display.</summary>
@@ -194,6 +219,84 @@ public sealed class MatchEngine
         scores: new Dictionary<int, int>(_scores),
         addScore: (team, pts) => _scores[team] = _scores.GetValueOrDefault(team) + pts,
         send: Send);
+
+    private void OnHit(HitEvent hit)
+    {
+        if (Phase != MatchPhase.Running || !_participants.TryGetValue(hit.Victim, out Participant? victim))
+        {
+            return;
+        }
+
+        bool died = hit.Hp <= 0 && victim.Alive;
+        _participants[hit.Victim] = victim with
+        {
+            Hp = hit.Hp,
+            Alive = hit.Hp > 0,
+            DiedAt = died ? _clock() : victim.DiedAt,
+        };
+
+        MatchContext ctx = Context();
+        _mode!.OnHit(ctx, hit);
+        CheckEnd(ctx);
+    }
+
+    private void OnState(StateEvent state)
+    {
+        // State events carry the hostname, not the device id — resolve by hostname.
+        Participant? participant = _participants.Values.FirstOrDefault(p => p.Hostname == state.Source);
+        if (participant is null)
+        {
+            return;
+        }
+
+        if (state.Hp is { } hp)
+        {
+            _participants[participant.Id] = participant with
+            {
+                Hp = hp,
+                Alive = hp > 0,
+                DiedAt = hp > 0 ? null : participant.DiedAt,
+            };
+        }
+
+        if (Phase == MatchPhase.Running)
+        {
+            MatchContext ctx = Context();
+            _mode!.OnDeviceState(ctx, state, _participants[participant.Id]);
+            CheckEnd(ctx);
+        }
+    }
+
+    private void OnHeartbeat(Heartbeat hb)
+    {
+        if (!_participants.TryGetValue(hb.Id, out Participant? p))
+        {
+            return; // Not enrolled in this match; the lobby is fixed at start.
+        }
+
+        bool rejoined = !p.Online && Phase == MatchPhase.Running;
+
+        // Reconcile the authoritative hp from the heartbeat: covers lost EVT
+        // packets. Never scores (shooter unknown) — spec "unattributed hit".
+        bool died = hb.Hp <= 0 && p.Alive;
+        _participants[hb.Id] = p with
+        {
+            Hp = hb.Hp,
+            Alive = hb.Hp > 0,
+            Online = true,
+            DiedAt = died ? _clock() : (hb.Hp > 0 ? null : p.DiedAt),
+        };
+
+        if (rejoined)
+        {
+            Send(new Control { Kind = ControlKind.Start, Id = hb.Id });
+        }
+
+        if (Phase == MatchPhase.Running)
+        {
+            CheckEnd(Context());
+        }
+    }
 
     private void Send(Control control) =>
 
