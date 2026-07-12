@@ -21,6 +21,11 @@ public class DurationParserTests
     [InlineData("5x")]
     [InlineData("m")]
     [InlineData("five")]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
+    [InlineData("-Infinity")]
+    [InlineData("1e300s")]
+    [InlineData("9999999999999999999h")]
     public void TryParse_InvalidInputs_ReturnFalse(string? text)
     {
         Assert.False(DurationParser.TryParse(text, out _));

@@ -31,12 +31,19 @@ public static class DurationParser
         }
 
         if (!double.TryParse(digits, NumberStyles.Float, CultureInfo.InvariantCulture, out double amount) ||
+            !double.IsFinite(amount) ||
             amount <= 0)
         {
             return false;
         }
 
-        value = TimeSpan.FromSeconds(amount * multiplier);
+        double seconds = amount * multiplier;
+        if (!double.IsFinite(seconds) || seconds > TimeSpan.MaxValue.TotalSeconds)
+        {
+            return false;
+        }
+
+        value = TimeSpan.FromSeconds(seconds);
         return true;
     }
 }
