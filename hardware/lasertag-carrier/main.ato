@@ -27,10 +27,16 @@ module Carrier:
     signal VCC3V3
     signal GND
 
-    # J0 -- 2-pin power input terminal block (D5)
+    # J0 -- 2-pin power input terminal block (D5), then SW2 on-board power
+    # switch (SPST slide) with JP6 solder jumper across it for always-on.
+    # Board also carries H1-H4 M3 mounting holes in the corners (layout-only,
+    # added directly in the .kicad_pcb).
+    signal VCC5_IN
     j0 = new TerminalBlock2
-    j0.p1 ~ VCC5
+    j0.p1 ~ VCC5_IN
     j0.p2 ~ GND
+    # SW2 (SW_DIP_SPSTx01_Slide) : VCC5_IN -> VCC5 ; JP6 bridges the same pair
+    # (both added directly in the .kicad_pcb -- board file is source of truth)
 
     # ---- J1/J2 -- ESP32-S3-Matrix module sockets ---------------------------
     # J1 = left row (5V end), J2 = right row (GP33 end). Rows are 22.86mm
