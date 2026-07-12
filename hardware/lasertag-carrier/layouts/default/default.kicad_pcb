@@ -8163,7 +8163,7 @@
 		(uuid "58b5f2b1-eb2b-41ed-aeea-402f4642524b")
 		(at 112.5 92)
 		(property "Reference" "J3"
-			(at -4.2 17.7 0)
+			(at -3.6 13.5 0)
 			(layer "F.SilkS")
 			(uuid "2c8a88d7-8b96-4519-a685-d19bafde7ba7")
 			(effects
