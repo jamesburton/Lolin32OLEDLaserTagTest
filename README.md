@@ -69,6 +69,9 @@ mounting holes.
 
 ![lasertag-carrier rev1 front render](hardware/lasertag-carrier/board-render-rev1.png)
 
+- **How to build/assemble it** (stage-by-stage, core vs optional blocks,
+  jumper settings, bring-up):
+  [`instructions/BUILD_LASERTAG_CARRIER_ESP32_MATRIX.md`](instructions/BUILD_LASERTAG_CARRIER_ESP32_MATRIX.md)
 - **How it was made** (code → perf-board → Gerbers, tools/tips/gotchas):
   [`PCB_FROM_PLATFORMIO.md`](PCB_FROM_PLATFORMIO.md)
 - **Fab package** (PCBWay-ready Gerber zip):
@@ -77,6 +80,8 @@ mounting holes.
   [`pcb-carrier-rev1` release](../../releases/tag/pcb-carrier-rev1)
 - **BOM**: [`hardware/lasertag-carrier/bom.csv`](hardware/lasertag-carrier/bom.csv);
   circuit spec: `.docs/pcb-blocks.md`
+- **Ordering from PCBWay?** New users can use this referral link for **$5 off
+  their first order**: <https://pcbway.com/g/2F9n3B>
 
 ### Lolin32 OLED (monitor / decoder / transmitter)
 

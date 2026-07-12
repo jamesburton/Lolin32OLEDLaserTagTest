@@ -53,6 +53,8 @@ the KiCad GUI is still sensible before ordering.)
 
 ## Ordering from PCBWay
 
+- **New to PCBWay?** This referral link gives new users **$5 off their first
+  order**: <https://pcbway.com/g/2F9n3B>
 - **[PCBWay](https://www.pcbway.com/)** — upload the Gerber zip manually via
   *Quote* → *Add Gerber file*, or, if you have KiCad with the
   **[PCBWay Plug-In for KiCad](https://www.pcbway.com/blog/News/PCBWay_Plug_In_for_KiCad_3ea6219c.html)**
@@ -73,6 +75,10 @@ and is also attached to the `pcb-carrier-rev1` GitHub release. This is the
 rev1 front render as ordered (from the KiCad → PCBWay upload):
 
 ![lasertag-carrier rev1 front render](hardware/lasertag-carrier/board-render-rev1.png)
+
+Assembly instructions (stage-by-stage, core vs optional blocks, jumper
+settings, bring-up checklist):
+[`instructions/BUILD_LASERTAG_CARRIER_ESP32_MATRIX.md`](instructions/BUILD_LASERTAG_CARRIER_ESP32_MATRIX.md).
 
 ## Gotchas (each one cost real time)
 
