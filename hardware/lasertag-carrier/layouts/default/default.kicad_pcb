@@ -6928,7 +6928,7 @@
 		(uuid "2d101e59-591d-4e44-a3d5-08d64642524b")
 		(at 187.5 115)
 		(property "Reference" "J5"
-			(at -4 16.8 0)
+			(at 3.4 12.5 0)
 			(layer "F.SilkS")
 			(uuid "99cc9435-64f7-45b7-a0b8-3b6de7c01e21")
 			(effects
@@ -8489,6 +8489,7 @@
 		(tags "mountinghole M3")
 		(property "Reference" "H4"
 			(at 0 -4.15 0)
+			(hide yes)
 			(layer "F.SilkS")
 			(uuid "8a1e5139-3ed4-44f2-9816-7acee72e01db")
 			(effects
@@ -8595,6 +8596,7 @@
 		(tags "mountinghole M3")
 		(property "Reference" "H1"
 			(at 0 4.2 0)
+			(hide yes)
 			(layer "F.SilkS")
 			(uuid "7ac49ccf-f73b-443b-aa7f-decaf1a5479b")
 			(effects
@@ -8701,6 +8703,7 @@
 		(tags "mountinghole M3")
 		(property "Reference" "H2"
 			(at 0 4.2 0)
+			(hide yes)
 			(layer "F.SilkS")
 			(uuid "372a218f-2477-49cb-b980-b8991cba06f4")
 			(effects
@@ -9683,6 +9686,7 @@
 		(tags "mountinghole M3")
 		(property "Reference" "H3"
 			(at 0 -4.15 0)
+			(hide yes)
 			(layer "F.SilkS")
 			(uuid "496e5b16-7bbd-4ea5-ba61-b1deb2f98bd7")
 			(effects
@@ -20130,6 +20134,16 @@
 	)
 	(gr_text "PWR LED"
 		(at 131.5 123 0)
+		(layer "F.SilkS")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.13)
+			)
+		)
+	)
+	(gr_text "D1"
+		(at 188 68.9 0)
 		(layer "F.SilkS")
 		(effects
 			(font
