@@ -91,6 +91,9 @@ public sealed class MatchEngine
     /// <summary>
     /// Ends the match immediately: the mode's current result decides the
     /// winner (draw if the mode has none yet). No-op outside Countdown/Running.
+    /// Stopping during Countdown (the match never actually ran) sends a plain
+    /// <see cref="ControlKind.Stop"/> cue rather than a GameOver — there is no
+    /// result to celebrate. Stopping during Running still sends GameOver.
     /// </summary>
     public void Stop()
     {
@@ -99,7 +102,15 @@ public sealed class MatchEngine
             return;
         }
 
-        MatchResult? result = Phase == MatchPhase.Running ? _mode!.CheckEnd(Context()) : null;
+        if (Phase == MatchPhase.Countdown)
+        {
+            Phase = MatchPhase.Finished;
+            _winner = 0;
+            Send(new Control { Kind = ControlKind.Stop });
+            return;
+        }
+
+        MatchResult? result = _mode!.CheckEnd(Context());
         Finish(result?.WinnerTeam ?? 0);
     }
 
@@ -282,6 +293,16 @@ public sealed class MatchEngine
 
         bool rejoined = !p.Online && Phase == MatchPhase.Running;
 
+        // A rejoining participant that was already dead before this heartbeat
+        // (tracked offline while dead) and whose heartbeat still reports
+        // hp<=0 must come back DEAD, not resurrected by a plain Start — a
+        // WiFi blip must not undo a kill. Only a heartbeat reporting hp>0
+        // (the device rebooted, hp is volatile and device-authoritative)
+        // gets the reboot-recovery Start; that remains a documented
+        // limitation (see spec post-impl notes).
+        bool wasDeadBeforeReconciliation = !p.Alive;
+        bool rejoinedDead = rejoined && wasDeadBeforeReconciliation && hb.Hp <= 0;
+
         // Reconcile the authoritative hp from the heartbeat: covers lost EVT
         // packets. Never scores (shooter unknown) — spec "unattributed hit".
         bool died = hb.Hp <= 0 && p.Alive;
@@ -293,7 +314,11 @@ public sealed class MatchEngine
             DiedAt = died ? _clock() : (hb.Hp > 0 ? null : p.DiedAt),
         };
 
-        if (rejoined)
+        if (rejoinedDead)
+        {
+            Send(new Control { Kind = ControlKind.Reset, Hp = 0, Id = hb.Id });
+        }
+        else if (rejoined)
         {
             Send(new Control { Kind = ControlKind.Start, Id = hb.Id });
         }

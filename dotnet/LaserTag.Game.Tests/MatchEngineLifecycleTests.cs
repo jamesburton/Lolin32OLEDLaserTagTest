@@ -57,6 +57,20 @@ public class MatchEngineLifecycleTests
     }
 
     [Fact]
+    public void Stop_DuringCountdown_SendsStopNotGameOver()
+    {
+        MatchEngine engine = NewEngine();
+        engine.StartMatch(new NullMode(), [Msg.Hb("a", 1)]);
+
+        engine.Stop();
+
+        Control last = _sender.Sent[^1];
+        Assert.Equal(ControlKind.Stop, last.Kind);
+        Assert.Equal(MatchPhase.Finished, engine.Phase);
+        Assert.Equal(0, engine.Snapshot().Winner);
+    }
+
+    [Fact]
     public void StartMatch_WhenNotInLobbyOrFinished_Throws()
     {
         MatchEngine engine = NewEngine();

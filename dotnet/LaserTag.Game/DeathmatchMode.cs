@@ -14,7 +14,7 @@ public sealed class DeathmatchMode : IGameMode
     private readonly int _killPoints;
     private readonly TimeSpan? _respawnDelay;
     private readonly TimeSpan? _waveInterval;
-    private readonly Dictionary<string, DateTimeOffset> _pendingRespawns = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> _handledDeaths = new(StringComparer.Ordinal);
     private DateTimeOffset _nextWaveAt;
 
     /// <summary>Initializes the mode.</summary>
@@ -52,7 +52,7 @@ public sealed class DeathmatchMode : IGameMode
     /// <inheritdoc/>
     public void OnMatchStart(MatchContext context)
     {
-        _pendingRespawns.Clear();
+        _handledDeaths.Clear();
         if (_waveInterval is { } wave)
         {
             _nextWaveAt = context.Now + wave;
@@ -64,33 +64,41 @@ public sealed class DeathmatchMode : IGameMode
     {
         bool killed = hit.Hp <= 0;
         context.AddScore(hit.ShooterTeam, _hitPoints + (killed ? _killPoints : 0));
-        if (killed && _respawnDelay is { } delay)
-        {
-            _pendingRespawns[hit.Victim] = context.Now + delay;
-        }
     }
 
     /// <inheritdoc/>
     public void OnDeviceState(MatchContext context, StateEvent state, Participant participant)
     {
-        // A device that respawned by other means (manual reset) needs no pending respawn.
-        if (participant.Alive)
-        {
-            _pendingRespawns.Remove(participant.Id);
-        }
     }
 
     /// <inheritdoc/>
     public void OnTick(MatchContext context)
     {
-        if (_respawnDelay is not null)
+        if (_respawnDelay is { } delay)
         {
-            foreach ((string id, DateTimeOffset due) in _pendingRespawns.ToList())
+            // Derive respawns from Participant.DiedAt rather than a
+            // hit-populated pending set: the engine stamps DiedAt on
+            // hit-, state-, AND heartbeat-detected deaths, so this also
+            // catches a death whose kill EVT was lost and only surfaced via
+            // heartbeat reconciliation. Keyed on the exact DiedAt instant so
+            // a later death (new DiedAt) is handled again without needing
+            // stale-key cleanup.
+            foreach (Participant p in context.Participants)
             {
-                if (context.Now >= due)
+                if (p.Alive || p.DiedAt is not { } diedAt)
                 {
-                    context.Send(new Control { Kind = ControlKind.Reset, Hp = context.StartHp, Id = id });
-                    _pendingRespawns.Remove(id);
+                    continue;
+                }
+
+                if (_handledDeaths.TryGetValue(p.Id, out DateTimeOffset handled) && handled == diedAt)
+                {
+                    continue;
+                }
+
+                if (context.Now >= diedAt + delay)
+                {
+                    context.Send(new Control { Kind = ControlKind.Reset, Hp = context.StartHp, Id = p.Id });
+                    _handledDeaths[p.Id] = diedAt;
                 }
             }
         }

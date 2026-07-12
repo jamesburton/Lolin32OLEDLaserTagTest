@@ -143,6 +143,25 @@ public class MatchEngineEventTests
     }
 
     [Fact]
+    public void Heartbeat_AfterOfflineWhileDead_SendsResetNotStart_StaysDead()
+    {
+        MatchEngine engine = RunningEngine(Msg.Hb("a", 1), Msg.Hb("b", 2));
+        engine.OnMessage(Msg.Hit("a", 2, 2, hpAfter: 0)); // dead before going offline
+        _sender.Sent.Clear();
+
+        engine.MarkOffline("a");
+        engine.OnMessage(Msg.Hb("a", 1, hp: 0)); // rejoin heartbeat still reports dead
+
+        Control reissue = Assert.Single(_sender.Sent);
+        Assert.Equal(ControlKind.Reset, reissue.Kind);
+        Assert.Equal(0, reissue.Hp);
+        Assert.Equal("a", reissue.Id);
+        Participant a = engine.Snapshot().Participants.Single(p => p.Id == "a");
+        Assert.False(a.Alive);
+        Assert.True(a.Online);
+    }
+
+    [Fact]
     public void StateEvent_UpdatesHpAndNotifiesMode()
     {
         MatchEngine engine = RunningEngine(Msg.Hb("a", 1, host: "lasertag-a"));

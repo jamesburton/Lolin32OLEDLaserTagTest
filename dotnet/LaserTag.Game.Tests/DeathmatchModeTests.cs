@@ -53,6 +53,28 @@ public class DeathmatchModeTests
     }
 
     [Fact]
+    public void DeadPlayer_ViaLostKillEvt_StillRespawnsAfterDelay()
+    {
+        // The kill EVT never arrived; the death only surfaces via heartbeat
+        // reconciliation (hp=0, no HitEvent at all).
+        var mode = new DeathmatchMode(TimeSpan.FromMinutes(5), respawnDelay: TimeSpan.FromSeconds(10));
+        MatchEngine engine = Running(mode, Msg.Hb("a", 1), Msg.Hb("b", 2));
+
+        engine.OnMessage(Msg.Hb("a", 1, hp: 0));
+
+        _clock.Advance(TimeSpan.FromSeconds(10));
+        engine.Tick();
+
+        Control reset = Assert.Single(_sender.Sent, c => c.Kind == ControlKind.Reset);
+        Assert.Equal("a", reset.Id);
+        Assert.Equal(32, reset.Hp);
+
+        // Not re-sent on a subsequent tick.
+        engine.Tick();
+        Assert.Single(_sender.Sent, c => c.Kind == ControlKind.Reset);
+    }
+
+    [Fact]
     public void WaveMode_RespawnsAllDeadOnTheInterval()
     {
         var mode = new DeathmatchMode(TimeSpan.FromMinutes(5), waveInterval: TimeSpan.FromSeconds(30));
