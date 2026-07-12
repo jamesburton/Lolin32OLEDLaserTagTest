@@ -44,4 +44,20 @@ public class UdpControlSenderTests
         IPAddress result = BroadcastAddress.Compute(IPAddress.Parse(address), IPAddress.Parse(mask));
         Assert.Equal(IPAddress.Parse(expected), result);
     }
+
+    [Theory]
+    [InlineData("10.1.2.3", true)]
+    [InlineData("172.16.0.1", true)]
+    [InlineData("172.31.255.255", true)]
+    [InlineData("192.168.1.59", true)]
+    [InlineData("100.100.1.1", false)]
+    [InlineData("172.32.0.1", false)]
+    [InlineData("8.8.8.8", false)]
+    [InlineData("169.254.1.1", false)]
+    [InlineData("::1", false)]
+    public void IsRfc1918_ClassifiesAddressesCorrectly(string address, bool expected)
+    {
+        bool result = BroadcastAddress.IsRfc1918(IPAddress.Parse(address));
+        Assert.Equal(expected, result);
+    }
 }
