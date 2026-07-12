@@ -242,6 +242,32 @@ public sealed class UdpMessageParser
 
                 break;
 
+            case ControlKind.Countdown:
+                sb.Append("countdown");
+                if (control.N is { } n)
+                {
+                    sb.Append(" n=").Append(n.ToString(CultureInfo.InvariantCulture));
+                }
+
+                break;
+
+            case ControlKind.GameOver:
+                sb.Append("gameover");
+                if (control.Winner is { } winner)
+                {
+                    sb.Append(" winner=").Append(winner.ToString(CultureInfo.InvariantCulture));
+                }
+
+                break;
+
+            case ControlKind.Activate:
+                sb.Append("activate");
+                break;
+
+            case ControlKind.Deactivate:
+                sb.Append("deactivate");
+                break;
+
             default:
                 throw new ArgumentOutOfRangeException(
                     nameof(control),
@@ -249,6 +275,96 @@ public sealed class UdpMessageParser
                     "Unknown control kind.");
         }
 
+        // Grammar v2 addressing: id= is always the last key when present.
+        if (control.Id is { } targetId)
+        {
+            sb.Append(" id=").Append(targetId);
+        }
+
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Parses a host→device <c>CTL ...</c> wire line back into a
+    /// <see cref="Control"/>. The inverse of <see cref="FormatControl"/>.
+    /// </summary>
+    /// <param name="line">The raw CTL line (no hostname prefix; trailing newline tolerated).</param>
+    /// <returns>
+    /// The parsed control, or <see langword="null"/> if the line is empty,
+    /// malformed, has a hostname prefix, or names an unknown verb. Never throws.
+    /// </returns>
+    public Control? ParseControl(string? line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return null;
+        }
+
+        string[] tokens = line.Trim().Split(Whitespace, StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length < 2 || tokens[0] != "CTL")
+        {
+            return null;
+        }
+
+        ControlKind kind;
+        switch (tokens[1])
+        {
+            case "start": kind = ControlKind.Start; break;
+            case "stop": kind = ControlKind.Stop; break;
+            case "reset": kind = ControlKind.Reset; break;
+            case "countdown": kind = ControlKind.Countdown; break;
+            case "gameover": kind = ControlKind.GameOver; break;
+            case "activate": kind = ControlKind.Activate; break;
+            case "deactivate": kind = ControlKind.Deactivate; break;
+            default: return null;
+        }
+
+        Dictionary<string, string> fields = ParseFields(tokens, start: 2);
+
+        long? ts = null;
+        if (fields.ContainsKey("ts"))
+        {
+            if (!TryGetLong(fields, "ts", out long tsValue))
+            {
+                return null;
+            }
+
+            ts = tsValue;
+        }
+
+        int? hp = null, n = null, winner = null;
+        if (fields.ContainsKey("hp"))
+        {
+            if (!TryGetInt(fields, "hp", out int v))
+            {
+                return null;
+            }
+
+            hp = v;
+        }
+
+        if (fields.ContainsKey("n"))
+        {
+            if (!TryGetInt(fields, "n", out int v))
+            {
+                return null;
+            }
+
+            n = v;
+        }
+
+        if (fields.ContainsKey("winner"))
+        {
+            if (!TryGetInt(fields, "winner", out int v))
+            {
+                return null;
+            }
+
+            winner = v;
+        }
+
+        fields.TryGetValue("id", out string? id);
+
+        return new Control { Kind = kind, Ts = ts, Hp = hp, N = n, Winner = winner, Id = id };
     }
 }

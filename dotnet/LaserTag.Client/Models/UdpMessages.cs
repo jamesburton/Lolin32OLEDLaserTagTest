@@ -114,6 +114,18 @@ public enum ControlKind
 
     /// <summary>Force all devices to a state (<c>CTL reset</c>).</summary>
     Reset,
+
+    /// <summary>Pre-match countdown cue (<c>CTL countdown</c>, grammar v2).</summary>
+    Countdown,
+
+    /// <summary>Match-end cue with winning team (<c>CTL gameover</c>, grammar v2).</summary>
+    GameOver,
+
+    /// <summary>Wake a dormant target (<c>CTL activate</c>, grammar v2).</summary>
+    Activate,
+
+    /// <summary>Send a target dormant (<c>CTL deactivate</c>, grammar v2).</summary>
+    Deactivate,
 }
 
 /// <summary>
@@ -135,4 +147,22 @@ public sealed record Control
     /// Gets the optional <c>hp</c> value. Valid for <see cref="ControlKind.Reset"/>.
     /// </summary>
     public int? Hp { get; init; }
+
+    /// <summary>
+    /// Gets the optional countdown length in seconds. Valid for
+    /// <see cref="ControlKind.Countdown"/>.
+    /// </summary>
+    public int? N { get; init; }
+
+    /// <summary>
+    /// Gets the optional winning team (<c>0</c> = draw). Valid for
+    /// <see cref="ControlKind.GameOver"/>.
+    /// </summary>
+    public int? Winner { get; init; }
+
+    /// <summary>
+    /// Gets the optional target device id (grammar v2 addressing). When set, a
+    /// device applies the CTL only if the id matches its own; valid on every kind.
+    /// </summary>
+    public string? Id { get; init; }
 }

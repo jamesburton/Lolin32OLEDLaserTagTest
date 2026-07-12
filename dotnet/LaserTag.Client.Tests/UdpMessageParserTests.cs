@@ -181,4 +181,48 @@ public sealed class UdpMessageParserTests
         var control = new Control { Kind = ControlKind.Reset };
         Assert.Equal("CTL reset", _parser.FormatControl(control));
     }
+
+    [Theory]
+    [InlineData(ControlKind.Countdown, null, null, 5, null, null, "CTL countdown n=5")]
+    [InlineData(ControlKind.GameOver, null, null, null, 2, null, "CTL gameover winner=2")]
+    [InlineData(ControlKind.GameOver, null, null, null, 0, null, "CTL gameover winner=0")]
+    [InlineData(ControlKind.Activate, null, null, null, null, "752b38", "CTL activate id=752b38")]
+    [InlineData(ControlKind.Deactivate, null, null, null, null, null, "CTL deactivate")]
+    [InlineData(ControlKind.Reset, null, 32, null, null, "752b38", "CTL reset hp=32 id=752b38")]
+    [InlineData(ControlKind.Start, 30000L, null, null, null, "752b38", "CTL start ts=30000 id=752b38")]
+    public void FormatControl_GrammarV2_EmitsGoldenStrings(
+        ControlKind kind, long? ts, int? hp, int? n, int? winner, string? id, string expected)
+    {
+        var parser = new UdpMessageParser();
+        var control = new Control { Kind = kind, Ts = ts, Hp = hp, N = n, Winner = winner, Id = id };
+        Assert.Equal(expected, parser.FormatControl(control));
+    }
+
+    [Theory]
+    [InlineData("CTL countdown n=5")]
+    [InlineData("CTL gameover winner=0")]
+    [InlineData("CTL activate id=752b38")]
+    [InlineData("CTL deactivate")]
+    [InlineData("CTL reset hp=32 id=752b38")]
+    [InlineData("CTL start")]
+    [InlineData("CTL stop")]
+    public void ParseControl_RoundTripsFormattedStrings(string wire)
+    {
+        var parser = new UdpMessageParser();
+        Control? parsed = parser.ParseControl(wire);
+        Assert.NotNull(parsed);
+        Assert.Equal(wire, parser.FormatControl(parsed));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("CTL")]
+    [InlineData("CTL warp")]
+    [InlineData("hostname CTL start")] // CTL lines carry no hostname prefix
+    [InlineData("CTL countdown n=abc")]
+    public void ParseControl_MalformedOrUnknown_ReturnsNull(string? wire)
+    {
+        Assert.Null(new UdpMessageParser().ParseControl(wire));
+    }
 }
