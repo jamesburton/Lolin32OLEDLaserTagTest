@@ -3583,7 +3583,7 @@
 		(descr "1x-dip-switch SPST , Slide, row spacing 7.62 mm (300 mils), body size 9.78x4.72mm (see e.g. https://www.ctscorp.com/wp-content/uploads/206-208.pdf)")
 		(tags "DIP Switch SPST Slide 7.62mm 300mil")
 		(property "Reference" "SW2"
-			(at 3.8 0 0)
+			(at 3.8 1.5 0)
 			(layer "F.SilkS")
 			(uuid "ac2161fd-879b-4bf7-8feb-37bd0e75e308")
 			(effects
@@ -20125,6 +20125,16 @@
 			(font
 				(size 1.0 1.0)
 				(thickness 0.15)
+			)
+		)
+	)
+	(gr_text "PWR LED"
+		(at 131.5 123 0)
+		(layer "F.SilkS")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.13)
 			)
 		)
 	)
