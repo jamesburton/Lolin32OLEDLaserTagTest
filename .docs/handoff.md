@@ -71,7 +71,7 @@ Layers complete and on `main`:
    top-down as health drops (outer columns stay rainbow). Row-major pixel mapping
    confirmed correct on hardware.
 
-**Tests:** native 48 (test_board 11 + test_controlproto 29 + test_storage 8); .NET 57;
+**Tests:** native 48 (test_board 11 + test_controlproto 29 + test_storage 8); .NET 131;
 all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
 
 ## Hardware (both live on HAL firmware, both OTA-flashable)
@@ -300,8 +300,7 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
    running `superpowers:brainstorming` → spec → plan, building on the HAL.
 6. **OLED-shows-health** standing rule — wire when a device has both hp + an LCD
    (i.e. when the Lolin32 gains a target/hp role, likely via retaliation mode).
-7. **.NET host CLI + Claude skill** over `LaserTag.Client` (library done; CTL
-   sender must use subnet broadcast).
+7. ✅ **DONE:** .NET host CLI delivered by Spec A (spec: `docs/superpowers/specs/2026-07-12-game-manager-design.md`; plan: `docs/superpowers/plans/2026-07-12-game-manager.md`). `LaserTag.Game` + `LaserTag.Host` implement match orchestration + CTL grammar v2 (countdown/gameover/activate/deactivate/id=). UDP CTL sender (subnet broadcast, 3× repeat) in `UdpControlSender`. Remaining follow-ups: Spec B firmware pass (countdown/gameover/activate/deactivate/id= handling + OLED-health), Spec C hunt+retaliation modes, Claude-skill wrapper over the console.
 8. Housekeeping: revert matrix dark time to 5–15 s before real play; add an
    `/api/*` REST section to the README if desired.
 9. **PCB design & testing — RESEARCH + PLANNING PHASE (gated on hardware freeze).**

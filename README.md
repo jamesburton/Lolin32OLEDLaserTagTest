@@ -294,6 +294,23 @@ dotnet test  dotnet/LaserTag.sln                              # unit tests
 dotnet run --project dotnet/LaserTag.Smoke -- 192.168.1.24 20 # live REST + UDP roster
 ```
 
+### Game manager (host)
+
+`dotnet/LaserTag.Host` orchestrates matches over the control plane (spec:
+`docs/superpowers/specs/2026-07-12-game-manager-design.md`):
+
+```sh
+dotnet run --project dotnet/LaserTag.Host            # auto-detects the subnet broadcast
+# devices | start dm 5m [--kill 5 --hit 1 --waves 30s] | start elim [--timer 10m]
+# score | stop | reset [id] | activate [id] | deactivate [id] | quit
+```
+
+Match rules live in `dotnet/LaserTag.Game` (`IGameMode`: Deathmatch,
+Elimination). Scoring is per-team — the IR protocol carries the shooter's
+team, not a player id. CTL grammar v2 (`countdown`, `gameover`,
+`activate`/`deactivate`, optional `id=` addressing) is emitted by the host
+today; firmware behaviours for the new verbs land in Spec B.
+
 ---
 
 ## Board capability HAL
