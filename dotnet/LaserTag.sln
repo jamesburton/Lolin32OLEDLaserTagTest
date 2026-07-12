@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LaserTag.Game", "LaserTag.G
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LaserTag.Game.Tests", "LaserTag.Game.Tests\LaserTag.Game.Tests.csproj", "{BD4A354E-B636-47B5-BC97-8E46A3BF3268}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LaserTag.Host", "LaserTag.Host\LaserTag.Host.csproj", "{05039041-6A68-4F5F-A90C-38FB000DBDB4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{BD4A354E-B636-47B5-BC97-8E46A3BF3268}.Release|x64.Build.0 = Release|Any CPU
 		{BD4A354E-B636-47B5-BC97-8E46A3BF3268}.Release|x86.ActiveCfg = Release|Any CPU
 		{BD4A354E-B636-47B5-BC97-8E46A3BF3268}.Release|x86.Build.0 = Release|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Debug|x64.Build.0 = Debug|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Debug|x86.Build.0 = Debug|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Release|x64.ActiveCfg = Release|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Release|x64.Build.0 = Release|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Release|x86.ActiveCfg = Release|Any CPU
+		{05039041-6A68-4F5F-A90C-38FB000DBDB4}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
