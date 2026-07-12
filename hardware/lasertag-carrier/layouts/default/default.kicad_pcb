@@ -126,7 +126,7 @@
         (layer "F.Cu")
         (uuid "9b75ba39-d569-423f-8594-3e734642524b")
         (at 0 0 0)
-        (property "Reference" "U6"
+        (property "Reference" "C1"
             (at 1.25 -4.4 0)
             (layer "F.SilkS")
             (hide no)
@@ -138,7 +138,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "100uF/10V"
             (at 1.25 4.4 0)
             (layer "F.Fab")
             (hide no)
@@ -1648,7 +1648,7 @@
         (layer "F.Cu")
         (uuid "02e9ee96-ec99-44f1-a8cc-66714642524b")
         (at 0 -10 0)
-        (property "Reference" "U7"
+        (property "Reference" "C2"
             (at 1.25 -3.75 0)
             (layer "F.SilkS")
             (hide no)
@@ -1660,7 +1660,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "10uF/10V"
             (at 1.25 3.75 0)
             (layer "F.Fab")
             (hide no)
@@ -3010,7 +3010,7 @@
         (layer "F.Cu")
         (uuid "b3c56771-049c-4fc6-961c-025c4642524b")
         (at 0 -20 0)
-        (property "Reference" "U8"
+        (property "Reference" "D2"
             (at 1.27 -3.96 0)
             (layer "F.SilkS")
             (hide no)
@@ -3022,7 +3022,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "Power LED"
             (at 1.27 3.96 0)
             (layer "F.Fab")
             (hide no)
@@ -3204,7 +3204,7 @@
         (layer "F.Cu")
         (uuid "a14e232d-f22a-479d-9889-112a4642524b")
         (at 0 -30 0)
-        (property "Reference" "U15"
+        (property "Reference" "J0"
             (at 1.27 -4.22 0)
             (layer "F.SilkS")
             (hide no)
@@ -3216,7 +3216,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "Power in 2P"
             (at 1.27 4.22 0)
             (layer "F.Fab")
             (hide no)
@@ -3584,7 +3584,7 @@
         (layer "F.Cu")
         (uuid "d0c6ad73-1ccb-438a-a096-59a74642524b")
         (at 0 -40 0)
-        (property "Reference" "U16"
+        (property "Reference" "J1"
             (at 0 -2.77 0)
             (layer "F.SilkS")
             (hide no)
@@ -3596,7 +3596,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "S3-Matrix L"
             (at 0 25.63 0)
             (layer "F.Fab")
             (hide no)
@@ -3914,7 +3914,7 @@
         (layer "F.Cu")
         (uuid "44559083-7d41-41c1-83b6-d7444642524b")
         (at 0 -50 0)
-        (property "Reference" "U18"
+        (property "Reference" "J12"
             (at 0 -2.38 0)
             (layer "F.SilkS")
             (hide no)
@@ -3926,7 +3926,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "Ext button"
             (at 0 4.92 0)
             (layer "F.Fab")
             (hide no)
@@ -4143,7 +4143,7 @@
         (layer "F.Cu")
         (uuid "27fbed60-4f3c-47d2-90ce-15f44642524b")
         (at 0 -60 0)
-        (property "Reference" "U19"
+        (property "Reference" "J13"
             (at 0 -2.38 0)
             (layer "F.SilkS")
             (hide no)
@@ -4155,7 +4155,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "Touch hdr"
             (at 0 7.46 0)
             (layer "F.Fab")
             (hide no)
@@ -4381,7 +4381,7 @@
         (layer "F.Cu")
         (uuid "f4e745c5-cc84-4836-b4bc-7f864642524b")
         (at 0 -70 0)
-        (property "Reference" "U17"
+        (property "Reference" "J2"
             (at 0 -2.77 0)
             (layer "F.SilkS")
             (hide no)
@@ -4393,7 +4393,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "S3-Matrix R"
             (at 0 25.63 0)
             (layer "F.Fab")
             (hide no)
@@ -4711,7 +4711,7 @@
         (layer "F.Cu")
         (uuid "c8dbd47e-8dd2-4b00-9a5f-b0b04642524b")
         (at 0 -80 0)
-        (property "Reference" "U20"
+        (property "Reference" "JP4"
             (at 0 -1.8 0)
             (layer "F.SilkS")
             (hide no)
@@ -4723,7 +4723,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "GP2-button"
             (at 0 1.9 0)
             (layer "F.Fab")
             (hide no)
@@ -4933,7 +4933,7 @@
         (layer "F.Cu")
         (uuid "8665bde3-4e33-4dcf-aee4-7ece4642524b")
         (at 0 -90 0)
-        (property "Reference" "U21"
+        (property "Reference" "JP5"
             (at 0 -1.8 0)
             (layer "F.SilkS")
             (hide no)
@@ -4945,7 +4945,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "GP2-touch"
             (at 0 1.9 0)
             (layer "F.Fab")
             (hide no)
@@ -5155,7 +5155,7 @@
         (layer "F.Cu")
         (uuid "8eafdeb8-2b2d-48a2-8e59-043e4642524b")
         (at 0 -100 0)
-        (property "Reference" "U29"
+        (property "Reference" "R7"
             (at 5.08 -2.37 0)
             (layer "F.SilkS")
             (hide no)
@@ -5167,7 +5167,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "330R"
             (at 5.08 2.37 0)
             (layer "F.Fab")
             (hide no)
@@ -5336,7 +5336,7 @@
         (layer "F.Cu")
         (uuid "c30e8011-7017-4f9d-8fc0-b7b14642524b")
         (at 0 -110 0)
-        (property "Reference" "U34"
+        (property "Reference" "SW1"
             (at 3.25 -2 0)
             (layer "F.SilkS")
             (hide no)
@@ -5348,7 +5348,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "SW_PUSH_6mm"
             (at 3.75 6.7 0)
             (layer "F.Fab")
             (hide no)
@@ -5695,7 +5695,7 @@
         (layer "F.Cu")
         (uuid "2c3e0185-c289-44f8-981f-c4304642524b")
         (at 10 0 0)
-        (property "Reference" "U1"
+        (property "Reference" "C3"
             (at 2.5 -6.25 0)
             (layer "F.SilkS")
             (hide no)
@@ -5707,7 +5707,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "470uF/10V"
             (at 2.5 6.25 0)
             (layer "F.Fab")
             (hide no)
@@ -7777,7 +7777,7 @@
         (layer "F.Cu")
         (uuid "58b5f2b1-eb2b-41ed-aeea-402f4642524b")
         (at 10 -10 0)
-        (property "Reference" "U2"
+        (property "Reference" "J3"
             (at 0 -2.77 0)
             (layer "F.SilkS")
             (hide no)
@@ -7789,7 +7789,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "MAX98357A"
             (at 0 18.01 0)
             (layer "F.Fab")
             (hide no)
@@ -8080,7 +8080,7 @@
         (layer "F.Cu")
         (uuid "079a7611-c109-4ff3-91af-5e814642524b")
         (at 10 -20 0)
-        (property "Reference" "U3"
+        (property "Reference" "J4"
             (at 0 -2.38 0)
             (layer "F.SilkS")
             (hide no)
@@ -8092,7 +8092,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "Speaker"
             (at 0 4.92 0)
             (layer "F.Fab")
             (hide no)
@@ -8309,7 +8309,7 @@
         (layer "F.Cu")
         (uuid "57b5501b-808d-4ee4-9375-9b644642524b")
         (at 10 -30 0)
-        (property "Reference" "U4"
+        (property "Reference" "JP1"
             (at 0 -1.8 0)
             (layer "F.SilkS")
             (hide no)
@@ -8321,7 +8321,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "SD mute"
             (at 0 1.9 0)
             (layer "F.Fab")
             (hide no)
@@ -8531,7 +8531,7 @@
         (layer "F.Cu")
         (uuid "b515ed33-7deb-4691-a19d-62994642524b")
         (at 10 -40 0)
-        (property "Reference" "U5"
+        (property "Reference" "JP2"
             (at 0 -1.8 0)
             (layer "F.SilkS")
             (hide no)
@@ -8543,7 +8543,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "GAIN strap"
             (at 0 2 0)
             (layer "F.Fab")
             (hide no)
@@ -8752,7 +8752,7 @@
         (layer "F.Cu")
         (uuid "f4a91dcc-ca38-4aad-9468-6c624642524b")
         (at 20 0 0)
-        (property "Reference" "U9"
+        (property "Reference" "C9"
             (at 2.5 -2.5 0)
             (layer "F.SilkS")
             (hide no)
@@ -8764,7 +8764,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "100nF"
             (at 2.5 2.5 0)
             (layer "F.Fab")
             (hide no)
@@ -8942,7 +8942,7 @@
         (layer "F.Cu")
         (uuid "98288262-2a60-4f7d-a83b-14464642524b")
         (at 20 -10 0)
-        (property "Reference" "U10"
+        (property "Reference" "J6"
             (at 0 -2.38 0)
             (layer "F.SilkS")
             (hide no)
@@ -8954,7 +8954,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "IR RX"
             (at 0 7.46 0)
             (layer "F.Fab")
             (hide no)
@@ -9180,7 +9180,7 @@
         (layer "F.Cu")
         (uuid "8080991e-0227-4f9e-bd4b-04634642524b")
         (at 20 -20 0)
-        (property "Reference" "U11"
+        (property "Reference" "J7"
             (at 0 -2.38 0)
             (layer "F.SilkS")
             (hide no)
@@ -9192,7 +9192,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "IR LED"
             (at 0 4.92 0)
             (layer "F.Fab")
             (hide no)
@@ -9409,7 +9409,7 @@
         (layer "F.Cu")
         (uuid "ce4b3ce9-e0a4-43ba-b0f8-0a484642524b")
         (at 20 -30 0)
-        (property "Reference" "U12"
+        (property "Reference" "Q1"
             (at 1.27 -3.56 0)
             (layer "F.SilkS")
             (hide no)
@@ -9421,7 +9421,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "2N2222A"
             (at 1.27 2.79 0)
             (layer "F.Fab")
             (hide no)
@@ -9642,7 +9642,7 @@
         (layer "F.Cu")
         (uuid "6d4e8e2d-2978-4427-a788-b1de4642524b")
         (at 20 -40 0)
-        (property "Reference" "U13"
+        (property "Reference" "R1"
             (at 5.08 -2.37 0)
             (layer "F.SilkS")
             (hide no)
@@ -9654,7 +9654,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "470R"
             (at 5.08 2.37 0)
             (layer "F.Fab")
             (hide no)
@@ -9823,7 +9823,7 @@
         (layer "F.Cu")
         (uuid "1c26db83-5e3a-45ef-8487-077f4642524b")
         (at 20 -50 0)
-        (property "Reference" "U14"
+        (property "Reference" "R2"
             (at 5.08 -2.37 0)
             (layer "F.SilkS")
             (hide no)
@@ -9835,7 +9835,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "33R"
             (at 5.08 2.37 0)
             (layer "F.Fab")
             (hide no)
@@ -10004,7 +10004,7 @@
         (layer "F.Cu")
         (uuid "6ca3c33f-0eff-4672-9da3-529c4642524b")
         (at 30 0 0)
-        (property "Reference" "U22"
+        (property "Reference" "C7"
             (at 2.5 -2.5 0)
             (layer "F.SilkS")
             (hide no)
@@ -10016,7 +10016,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "100nF"
             (at 2.5 2.5 0)
             (layer "F.Fab")
             (hide no)
@@ -10194,7 +10194,7 @@
         (layer "F.Cu")
         (uuid "41d69ec7-6b5a-4dd8-92c2-02ff4642524b")
         (at 30 -10 0)
-        (property "Reference" "U23"
+        (property "Reference" "C8"
             (at 2.5 -6.25 0)
             (layer "F.SilkS")
             (hide no)
@@ -10206,7 +10206,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "1000uF/10V"
             (at 2.5 6.25 0)
             (layer "F.Fab")
             (hide no)
@@ -12276,7 +12276,7 @@
         (layer "F.Cu")
         (uuid "e5713e23-29a5-43d4-9dc6-3b2a4642524b")
         (at 30 -20 0)
-        (property "Reference" "U24"
+        (property "Reference" "J10"
             (at 0 -2.38 0)
             (layer "F.SilkS")
             (hide no)
@@ -12288,7 +12288,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "LS in"
             (at 0 7.46 0)
             (layer "F.Fab")
             (hide no)
@@ -12514,7 +12514,7 @@
         (layer "F.Cu")
         (uuid "0c90061a-f368-413e-b364-4d2a4642524b")
         (at 30 -30 0)
-        (property "Reference" "U25"
+        (property "Reference" "J11"
             (at 0 -2.38 0)
             (layer "F.SilkS")
             (hide no)
@@ -12526,7 +12526,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "LS out"
             (at 0 7.46 0)
             (layer "F.Fab")
             (hide no)
@@ -12752,7 +12752,7 @@
         (layer "F.Cu")
         (uuid "bd1e5779-33fa-4f25-a973-2a094642524b")
         (at 30 -40 0)
-        (property "Reference" "U26"
+        (property "Reference" "R6"
             (at 5.08 -2.37 0)
             (layer "F.SilkS")
             (hide no)
@@ -12764,7 +12764,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "220R"
             (at 5.08 2.37 0)
             (layer "F.Fab")
             (hide no)
@@ -12933,7 +12933,7 @@
         (layer "F.Cu")
         (uuid "6605f467-55be-4e1f-b1ad-0ad94642524b")
         (at 30 -50 0)
-        (property "Reference" "U27"
+        (property "Reference" "U1"
             (at 0 -5.28 0)
             (layer "F.SilkS")
             (hide no)
@@ -12945,7 +12945,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "74AHCT125"
             (at 0 5.28 0)
             (layer "F.Fab")
             (hide no)
@@ -13345,7 +13345,7 @@
         (layer "F.Cu")
         (uuid "1a1aaa55-acec-4bf4-9660-14094642524b")
         (at 40 0 0)
-        (property "Reference" "U28"
+        (property "Reference" "J9"
             (at 0 -2.38 0)
             (layer "F.SilkS")
             (hide no)
@@ -13357,7 +13357,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "OLED I2C"
             (at 0 10 0)
             (layer "F.Fab")
             (hide no)
@@ -13592,7 +13592,7 @@
         (layer "F.Cu")
         (uuid "1c6b38bf-4dd5-44af-b79d-92de4642524b")
         (at 50 0 0)
-        (property "Reference" "U30"
+        (property "Reference" "C4"
             (at 2.5 -2.5 0)
             (layer "F.SilkS")
             (hide no)
@@ -13604,7 +13604,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "100nF"
             (at 2.5 2.5 0)
             (layer "F.Fab")
             (hide no)
@@ -13782,7 +13782,7 @@
         (layer "F.Cu")
         (uuid "d0735acf-762b-46bc-8985-c0f34642524b")
         (at 50 -10 0)
-        (property "Reference" "U31"
+        (property "Reference" "C5"
             (at 1.25 -3.75 0)
             (layer "F.SilkS")
             (hide no)
@@ -13794,7 +13794,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "10uF/10V"
             (at 1.25 3.75 0)
             (layer "F.Fab")
             (hide no)
@@ -15144,7 +15144,7 @@
         (layer "F.Cu")
         (uuid "2d101e59-591d-4e44-a3d5-08d64642524b")
         (at 50 -20 0)
-        (property "Reference" "U32"
+        (property "Reference" "J5"
             (at 0 -2.77 0)
             (layer "F.SilkS")
             (hide no)
@@ -15156,7 +15156,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "microSD"
             (at 0 15.47 0)
             (layer "F.Fab")
             (hide no)
@@ -15438,7 +15438,7 @@
         (layer "F.Cu")
         (uuid "6b6ae794-bf9f-4968-9245-3b3f4642524b")
         (at 50 -30 0)
-        (property "Reference" "U33"
+        (property "Reference" "JP3"
             (at 0 -1.8 0)
             (layer "F.SilkS")
             (hide no)
@@ -15450,7 +15450,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "SD_VDD sel"
             (at 0 1.9 0)
             (layer "F.Fab")
             (hide no)
@@ -15660,7 +15660,7 @@
         (layer "F.Cu")
         (uuid "0f9454e9-6c37-43cd-bda7-b4044642524b")
         (at 60 0 0)
-        (property "Reference" "U35"
+        (property "Reference" "C6"
             (at 2.5 -6.25 0)
             (layer "F.SilkS")
             (hide no)
@@ -15672,7 +15672,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "1000uF/10V"
             (at 2.5 6.25 0)
             (layer "F.Fab")
             (hide no)
@@ -17742,7 +17742,7 @@
         (layer "F.Cu")
         (uuid "40ea3745-5ef4-44ce-913d-571d4642524b")
         (at 60 -10 0)
-        (property "Reference" "U36"
+        (property "Reference" "J8"
             (at 0 -2.38 0)
             (layer "F.SilkS")
             (hide no)
@@ -17754,7 +17754,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "WS2812 out"
             (at 0 7.46 0)
             (layer "F.Fab")
             (hide no)
@@ -17980,7 +17980,7 @@
         (layer "F.Cu")
         (uuid "a10acf72-31a3-4a3d-83be-b5bf4642524b")
         (at 60 -20 0)
-        (property "Reference" "U37"
+        (property "Reference" "R3"
             (at 5.08 -2.37 0)
             (layer "F.SilkS")
             (hide no)
@@ -17992,7 +17992,7 @@
                 )
             )
         )
-        (property "Value" ""
+        (property "Value" "220R"
             (at 5.08 2.37 0)
             (layer "F.Fab")
             (hide no)
