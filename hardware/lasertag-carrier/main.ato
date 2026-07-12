@@ -41,9 +41,8 @@ module Carrier:
     j1.p1 ~ VCC5      # 5V
     j1.p2 ~ GND       # GND
     j1.p3 ~ VCC3V3    # 3V3(OUT)
-    # j1.p4 = GP7 ACT_LED -- no carrier connection (Assumption #9: onboard-LED
-    # status on the Waveshare module is unconfirmed; DNP LED+resistor option
-    # not modelled here, see build report).
+    # j1.p4 = GP7 ACT_LED -> activity-LED header (R9/J14 below). Firmware
+    # blinks this pin on IR activity (BoardProfile activityLedPin = 7).
     # j1.p5 = GP6 -> Ws2812OutBlock.ws_data
     # j1.p6 = GP5 -> I2cOledBlock.i2c_scl
     # j1.p7 = GP4 -> I2cOledBlock.i2c_sda
@@ -71,6 +70,15 @@ module Carrier:
     VCC5 ~ r7.p1
     r7.p2 ~ d2.anode
     d2.cathode ~ GND
+
+    # ---- R9/J14 -- activity-LED header (GP7) --------------------------------
+    # External LED plugs into J14; 220R series resistor on-board (matches the
+    # breadboard circuit currently in use).
+    r9 = new ResistorTHT
+    j14 = new PinHeader1x2
+    j1.p4 ~ r9.p1
+    r9.p2 ~ j14.p1
+    j14.p2 ~ GND
 
     # ---- GP2 role selector (Block 1(f), D11) -------------------------------
     # Close AT MOST ONE of JP1 (Block 2, audio hard-mute) / JP4 (button) /
@@ -131,9 +139,10 @@ module Carrier:
     oled.i2c_sda ~ j1.p7
     oled.i2c_scl ~ j1.p6
 
-    # Level-shifter is a standalone board (Block 7); its DATA in/out are
-    # off-board nets reached via cables to ws.j8 and to the strip -- left
-    # unconnected here on purpose (same treatment as SPK+/SPK-, Assumption #10).
-    levelshifter = new LevelShifterBoard
-    levelshifter.VCC5 ~ VCC5
-    levelshifter.GND ~ GND
+    # Level-shifter is a standalone board (Block 7), NOT on this carrier --
+    # removed from the layout (2026-07-12): external-strip support stays via
+    # the ws.j8 output; build the shifter board separately if/when ring/status
+    # LEDs are added. Its module remains in level_shifter.ato for that build.
+    # levelshifter = new LevelShifterBoard
+    # levelshifter.VCC5 ~ VCC5
+    # levelshifter.GND ~ GND
