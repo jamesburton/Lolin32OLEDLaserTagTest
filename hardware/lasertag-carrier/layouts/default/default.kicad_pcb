@@ -16827,7 +16827,7 @@
 			)
 		)
 	)
-	(gr_text "ACT"
+	(gr_text "ACT LED"
 		(at 125 68.9 0)
 		(layer "F.SilkS")
 		(uuid "7ba32836-cb8a-4e51-bb0a-bac8775a523b")
@@ -17003,8 +17003,19 @@
 			)
 		)
 	)
+	(gr_text "1000u"
+		(at 157 82.5 0)
+		(layer "F.SilkS")
+		(uuid "16f43390-a3fd-4e6a-a45e-7ffc5f3a8855")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.13)
+			)
+		)
+	)
 	(gr_text "100n"
-		(at 163 66 0)
+		(at 157.5 66 0)
 		(layer "F.SilkS")
 		(uuid "d7e51989-f287-452f-ade3-46ee94fe3d4a")
 		(effects
@@ -17018,17 +17029,6 @@
 		(at 164.5 118.8 0)
 		(layer "F.SilkS")
 		(uuid "705f11db-6cab-449e-b6c1-748f7246a634")
-		(effects
-			(font
-				(size 0.8 0.8)
-				(thickness 0.13)
-			)
-		)
-	)
-	(gr_text "1000u"
-		(at 164.8 85 0)
-		(layer "F.SilkS")
-		(uuid "16f43390-a3fd-4e6a-a45e-7ffc5f3a8855")
 		(effects
 			(font
 				(size 0.8 0.8)
@@ -17095,17 +17095,6 @@
 		(at 181 128 0)
 		(layer "F.SilkS")
 		(uuid "fcddca07-312e-440a-9059-a20aabb5cd23")
-		(effects
-			(font
-				(size 0.8 0.8)
-				(thickness 0.13)
-			)
-		)
-	)
-	(gr_text "10u"
-		(at 183 122 0)
-		(layer "F.SilkS")
-		(uuid "1afbcb7b-439b-438a-bb4c-73392a9ce6f2")
 		(effects
 			(font
 				(size 0.8 0.8)
@@ -17180,9 +17169,20 @@
 		)
 	)
 	(gr_text "AUDIO"
-		(at 105 99.5 90)
+		(at 109.8 99.5 90)
 		(layer "F.SilkS")
 		(uuid "51e4bc86-d06e-41fe-a03a-120836205594")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.13)
+			)
+		)
+	)
+	(gr_text "10u"
+		(at 182.4 122 90)
+		(layer "F.SilkS")
+		(uuid "1afbcb7b-439b-438a-bb4c-73392a9ce6f2")
 		(effects
 			(font
 				(size 0.8 0.8)

@@ -45,4 +45,5 @@ module AudioBlock:
     # at the MAX98357A module's own solder pads (Assumption #10) -- left
     # unconnected here on purpose; wire via short cable per the module's SPK
     # pads at assembly time.
-    j4 = new PinHeader1x2
+    # j4 REMOVED (2026-07-12): MAX98357A module has onboard speaker terminals -- header was never connected (Assumption #10)
+    # j4 = new PinHeader1x2
