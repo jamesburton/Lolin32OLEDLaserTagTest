@@ -71,7 +71,7 @@ Layers complete and on `main`:
    top-down as health drops (outer columns stay rainbow). Row-major pixel mapping
    confirmed correct on hardware.
 
-**Tests:** native 49 (test_board 11 + test_controlproto 30 + test_storage 8); .NET 131;
+**Tests:** native 51 (test_board 11 + test_controlproto 32 + test_storage 8); .NET 134;
 all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
 
 ## Hardware (both live on HAL firmware, both OTA-flashable)
@@ -303,12 +303,15 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
 7. ✅ **DONE:** .NET host CLI delivered by Spec A (spec: `docs/superpowers/specs/2026-07-12-game-manager-design.md`; plan: `docs/superpowers/plans/2026-07-12-game-manager.md`). `LaserTag.Game` + `LaserTag.Host` implement match orchestration + CTL grammar v2 (countdown/gameover/activate/deactivate/id=). UDP CTL sender (subnet broadcast, 3× repeat) in `UdpControlSender`. FIRST: firmware id= filter on CTL (see spec post-impl notes) — current firmware ignores unknown CTL keys including id=, so id=-addressed reset/start is applied by every device, not just the target; per-player respawns/rejoin re-issues are unsafe for multi-device play until this lands. Remaining follow-ups: Spec B firmware pass (countdown/gameover/activate/deactivate/id= handling + OLED-health), Spec C hunt+retaliation modes, Claude-skill wrapper over the console.
 8. Housekeeping: revert matrix dark time to 5–15 s before real play; add an
    `/api/*` REST section to the README if desired.
-8a. **Damage multiplier (requested 2026-07-12, design pending user answers):**
-   firmware-side option `1x|2x|4x|8x|16x|custom` — hp loss = dmg × multiplier
-   (16x: a dmg-2 rocket wipes startHp 32 in one hit; 8x: two rockets). Possibly
-   per-team as a handicap (open: keyed by shooter team = damage dealt, vs
-   victim team = damage taken). Plumb like `startHp`: ConfigDoc + NVS + REST
-   PATCH + serial verb; per-team map would mirror `teamSfx`.
+8a. ✅ **DONE (2026-07-13): Damage multiplier.** `config.damageMultiplier`
+   (global 1–32, presets 1/2/4/8/16 + custom) + `config.teamDamageMult`
+   per-SHOOTER-team handicap override keyed like `teamSfx` (0 = inherit
+   global). hp loss = dmg × mult (16x: a dmg-2 rocket wipes startHp 32).
+   EVT hit reports the EFFECTIVE damage so host mirrors stay truthful.
+   Plumbing: ConfigDoc serialize/PATCH (validated, native-tested), NVS
+   (`dmgMult`, `teamDmg<n>`), serial verb `mult | mult <1-32> |
+   mult <team> <0-32>`, OpenAPI schema (also backfilled the missing
+   teamSfx/deathSfx/startHp there). S3 needs a reflash to pick it up.
 8b. **Configurable sound sources (requested 2026-07-12):** replace hardcoded
    SD names (`sdplay` plays fixed `/sfx/test.wav` in `src/matrix_main.cpp`)
    with path-based config; support baked bank + microSD paths, and consider

@@ -158,7 +158,8 @@ void test_serialize_config_golden() {
       "\"enabledTeams\":[1,2,3,4],\"protocolId\":\"vatos\",\"brightness\":13,"
       "\"teamColours\":{\"1\":\"#0000FF\",\"2\":\"#FF0000\",\"3\":\"#00FF00\","
       "\"4\":\"#FFFFFF\"},\"teamSfx\":{\"1\":0,\"2\":2,\"3\":3,\"4\":5},"
-      "\"deathSfx\":6,\"startHp\":32}",
+      "\"deathSfx\":6,\"startHp\":32,\"damageMultiplier\":1,"
+      "\"teamDamageMult\":{\"1\":0,\"2\":0,\"3\":0,\"4\":0}}",
       buf);
 }
 
@@ -256,6 +257,41 @@ void test_patch_config_start_hp_valid_and_invalid() {
   TEST_ASSERT_FALSE(bad.ok);
   TEST_ASSERT_EQUAL_STRING("startHp must be 4/8/16/32", bad.error);
   TEST_ASSERT_EQUAL_INT(8, cfg.startHp);
+}
+
+void test_patch_config_damage_multiplier_valid_and_invalid() {
+  ConfigDoc cfg;
+  TEST_ASSERT_EQUAL_INT(1, cfg.damageMultiplier); // default 1x
+  PatchResult ok = applyConfigPatch("{\"damageMultiplier\":8}", cfg);
+  TEST_ASSERT_TRUE(ok.ok);
+  TEST_ASSERT_EQUAL_INT(8, cfg.damageMultiplier);
+  // "custom" = any value in 1..32, not just the 1/2/4/8/16 presets.
+  ok = applyConfigPatch("{\"damageMultiplier\":3}", cfg);
+  TEST_ASSERT_TRUE(ok.ok);
+  TEST_ASSERT_EQUAL_INT(3, cfg.damageMultiplier);
+  PatchResult bad = applyConfigPatch("{\"damageMultiplier\":0}", cfg);
+  TEST_ASSERT_FALSE(bad.ok);
+  TEST_ASSERT_EQUAL_STRING("damageMultiplier must be 1-32", bad.error);
+  TEST_ASSERT_EQUAL_INT(3, cfg.damageMultiplier);
+  bad = applyConfigPatch("{\"damageMultiplier\":33}", cfg);
+  TEST_ASSERT_FALSE(bad.ok);
+  TEST_ASSERT_EQUAL_INT(3, cfg.damageMultiplier);
+}
+
+void test_patch_config_team_damage_mult() {
+  ConfigDoc cfg;
+  // Keyed by team index like teamSfx; 0 = inherit the global multiplier.
+  PatchResult ok = applyConfigPatch("{\"teamDamageMult\":{\"2\":4}}", cfg);
+  TEST_ASSERT_TRUE(ok.ok);
+  TEST_ASSERT_EQUAL_INT(4, cfg.teamDamageMult[1]); // teamIndex[1] is team 2
+  TEST_ASSERT_EQUAL_INT(0, cfg.teamDamageMult[0]); // others still inherit
+  PatchResult clear = applyConfigPatch("{\"teamDamageMult\":{\"2\":0}}", cfg);
+  TEST_ASSERT_TRUE(clear.ok);
+  TEST_ASSERT_EQUAL_INT(0, cfg.teamDamageMult[1]);
+  PatchResult bad = applyConfigPatch("{\"teamDamageMult\":{\"2\":33}}", cfg);
+  TEST_ASSERT_FALSE(bad.ok);
+  TEST_ASSERT_EQUAL_STRING("teamDamageMult must be 0-32", bad.error);
+  TEST_ASSERT_EQUAL_INT(0, cfg.teamDamageMult[1]);
 }
 
 // --- §2.2 Status serialize golden vector -----------------------------------
@@ -399,6 +435,8 @@ int main(int, char **) {
   RUN_TEST(test_patch_config_arrays_and_colours);
   RUN_TEST(test_patch_config_round_trip);
   RUN_TEST(test_patch_config_start_hp_valid_and_invalid);
+  RUN_TEST(test_patch_config_damage_multiplier_valid_and_invalid);
+  RUN_TEST(test_patch_config_team_damage_mult);
   RUN_TEST(test_serialize_status_golden);
   RUN_TEST(test_parse_and_serialize_mode_golden);
   RUN_TEST(test_parse_mode_malformed);

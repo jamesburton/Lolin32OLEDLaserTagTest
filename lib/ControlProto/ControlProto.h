@@ -161,6 +161,9 @@ struct ConfigDoc {
   int teamSfx[TeamColourCount] = {0, 2, 3, 5}; ///< SFX bank index per team slot
   int deathSfx = 6;                            ///< SFX bank index for the death cue
   int startHp = 32;                            ///< starting health; one of 4/8/16/32
+  int damageMultiplier = 1;                    ///< global hit multiplier, 1..32
+  int teamDamageMult[TeamColourCount] = {0, 0, 0, 0}; ///< per-SHOOTER-team
+      ///< override (handicap), keyed like teamSfx; 0 = inherit the global
 };
 
 /// <summary>Serializes a ConfigDoc into the contract §2.2 ConfigDoc JSON.</summary>

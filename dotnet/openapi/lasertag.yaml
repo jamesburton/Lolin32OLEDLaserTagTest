@@ -322,6 +322,51 @@ components:
             "2": "#FF0000"
             "3": "#00FF00"
             "4": "#FFFFFF"
+        teamSfx:
+          type: object
+          description: >
+            SFX bank index per team. Keys are team indices as JSON strings;
+            values are indices into the baked SFX bank.
+          additionalProperties:
+            type: integer
+          example:
+            "1": 0
+            "2": 2
+            "3": 3
+            "4": 5
+        deathSfx:
+          type: integer
+          description: SFX bank index for the death cue.
+          example: 6
+        startHp:
+          type: integer
+          description: Starting health. Must be one of 4, 8, 16 or 32.
+          enum: [4, 8, 16, 32]
+          example: 32
+        damageMultiplier:
+          type: integer
+          description: >
+            Global damage multiplier applied to every incoming hit
+            (hp loss = damage x multiplier). Presets 1/2/4/8/16; any custom
+            value 1-32 is accepted.
+          minimum: 1
+          maximum: 32
+          example: 1
+        teamDamageMult:
+          type: object
+          description: >
+            Per-SHOOTER-team damage multiplier override (handicap). Keys are
+            team indices as JSON strings; a value of 0 inherits the global
+            damageMultiplier.
+          additionalProperties:
+            type: integer
+            minimum: 0
+            maximum: 32
+          example:
+            "1": 0
+            "2": 0
+            "3": 0
+            "4": 0
     ConfigPatch:
       type: object
       description: >

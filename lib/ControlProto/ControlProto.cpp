@@ -161,6 +161,16 @@ size_t serializeConfig(const ConfigDoc &cfg, char *out, size_t outSize) {
   }
   doc["deathSfx"] = cfg.deathSfx;
   doc["startHp"] = cfg.startHp;
+  doc["damageMultiplier"] = cfg.damageMultiplier;
+
+  // Per-shooter-team damage override, keyed by team index like teamSfx.
+  // 0 = inherit the global damageMultiplier.
+  JsonObject dmg = doc["teamDamageMult"].to<JsonObject>();
+  for (size_t i = 0; i < TeamColourCount; i++) {
+    char key[4];
+    snprintf(key, sizeof(key), "%d", cfg.teamIndex[i]);
+    dmg[key] = cfg.teamDamageMult[i];
+  }
   return serializeJson(doc, out, outSize);
 }
 
@@ -247,6 +257,29 @@ PatchResult applyConfigPatch(const char *json, ConfigDoc &cfg) {
         return res;
       }
       staged.startHp = v;
+    } else if (strcmp(key, "damageMultiplier") == 0) {
+      // Presets are 1/2/4/8/16 but any custom 1..32 is accepted.
+      const int v = kv.value().as<int>();
+      if (v < 1 || v > 32) {
+        snprintf(res.error, sizeof(res.error), "damageMultiplier must be 1-32");
+        return res;
+      }
+      staged.damageMultiplier = v;
+    } else if (strcmp(key, "teamDamageMult") == 0) {
+      // Keys are team indices as JSON strings; 0 = inherit the global.
+      for (JsonPair c : kv.value().as<JsonObject>()) {
+        const int v = c.value().as<int>();
+        if (v < 0 || v > 32) {
+          snprintf(res.error, sizeof(res.error), "teamDamageMult must be 0-32");
+          return res;
+        }
+        const int idx = atoi(c.key().c_str());
+        for (size_t i = 0; i < TeamColourCount; i++) {
+          if (staged.teamIndex[i] == idx) {
+            staged.teamDamageMult[i] = v;
+          }
+        }
+      }
     } else {
       // Unknown field → reject the whole patch (HTTP 400), cfg unchanged.
       snprintf(res.error, sizeof(res.error), "unknown field: %s", key);

@@ -117,6 +117,12 @@ bool saveConfig() {
   }
   nvs.putInt("deathSfx", config.deathSfx);
   nvs.putInt("startHp", config.startHp);
+  nvs.putInt("dmgMult", config.damageMultiplier);
+  for (size_t i = 0; i < cp::TeamColourCount; i++) {
+    char key[16];
+    snprintf(key, sizeof(key), "teamDmg%d", config.teamIndex[i]);
+    nvs.putInt(key, config.teamDamageMult[i]);
+  }
   nvs.putString("hostname", config.hostname);
   return true;
 }
@@ -170,6 +176,12 @@ void loadConfig() {
   }
   config.deathSfx = nvs.getInt("deathSfx", 6);
   config.startHp = nvs.getInt("startHp", 32);
+  config.damageMultiplier = nvs.getInt("dmgMult", 1);
+  for (size_t i = 0; i < cp::TeamColourCount; i++) {
+    char key[16];
+    snprintf(key, sizeof(key), "teamDmg%d", config.teamIndex[i]);
+    config.teamDamageMult[i] = nvs.getInt(key, 0);
+  }
 }
 
 // --- LEDs -------------------------------------------------------------------
@@ -203,10 +215,24 @@ void emitState(const char *s, int stateHp) {
 
 // --- Hit / damage policy ----------------------------------------------------
 
+// Effective damage multiplier for a firing team: the per-shooter-team handicap
+// override when set (>0), else the global damageMultiplier (mirror of
+// teamSfxIndex over config.teamDamageMult).
+static int damageMultForTeam(int team) {
+  for (size_t i = 0; i < cp::TeamColourCount; i++) {
+    if (config.teamIndex[i] == team && config.teamDamageMult[i] > 0) {
+      return config.teamDamageMult[i];
+    }
+  }
+  return config.damageMultiplier;
+}
+
 // Apply a decoded shot: take damage locally (authoritative), emit EVT hit, then
 // drive the visual response. At 0 hp hold Dead until respawn/reset.
+// The EVT reports the EFFECTIVE damage (after the multiplier) so host-side hp
+// mirrors stay truthful.
 void applyHit(const cp::TagEvent &ev) {
-  const int dmg = ev.damage > 0 ? ev.damage : 1;
+  const int dmg = (ev.damage > 0 ? ev.damage : 1) * damageMultForTeam(ev.team);
   hp -= dmg;
   if (hp < 0) {
     hp = 0;
@@ -374,6 +400,35 @@ void onLine(const char *line) {
       Serial.printf("lives=%d\n", config.startHp);
     } else {
       Serial.println("lives must be 4, 8, 16 or 32");
+    }
+  } else if (strncmp(line, "mult", 4) == 0 &&
+             (line[4] == '\0' || line[4] == ' ')) {
+    // Damage multiplier: `mult` prints, `mult <n>` sets the global (1-32),
+    // `mult <team> <n>` sets a per-shooter-team handicap (0 = inherit global).
+    int a = -1, b = -1;
+    const int argc = sscanf(line + 4, "%d %d", &a, &b);
+    if (argc <= 0) {
+      Serial.printf("mult=%d team[", config.damageMultiplier);
+      for (size_t i = 0; i < cp::TeamColourCount; i++) {
+        Serial.printf("%s%d:%d", i ? " " : "", config.teamIndex[i],
+                      config.teamDamageMult[i]);
+      }
+      Serial.println("] (0=inherit)");
+    } else if (argc == 1 && a >= 1 && a <= 32) {
+      config.damageMultiplier = a;
+      saveConfig();
+      Serial.printf("mult=%d\n", config.damageMultiplier);
+    } else if (argc == 2 && a >= 1 && a <= 4 && b >= 0 && b <= 32) {
+      for (size_t i = 0; i < cp::TeamColourCount; i++) {
+        if (config.teamIndex[i] == a) {
+          config.teamDamageMult[i] = b;
+        }
+      }
+      saveConfig();
+      Serial.printf("mult team %d = %d%s\n", a, b,
+                    b == 0 ? " (inherit global)" : "");
+    } else {
+      Serial.println("usage: mult | mult <1-32> | mult <team 1-4> <0-32>");
     }
   } else if (strcmp(line, "sdplay") == 0) {
     // Spike bench helper: mount the card, list /sfx/, and play one .wav
