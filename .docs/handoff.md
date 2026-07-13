@@ -19,8 +19,46 @@ Journey + gotchas: `PCB_FROM_PLATFORMIO.md` (repo root, linked from README).
 The audio work is now **committed to `main`** (`90f003a` "Add MAX98357A I2S
 sound: siren bank, per-team/death cues, selectable lives"), as is the microSD
 spike implementation and all PCB work — the working tree is clean. All native
-tests pass (48 — see Tests below), the `esp32-s3-matrix` env builds, and the
+tests pass (see Tests below), the `esp32-s3-matrix` env builds, and the
 S3 board is flashed with it over USB (COM6).
+
+### Game manager (Spec A) SHIPPED + damage multiplier (2026-07-12/13)
+The **host-side game manager is built, reviewed, and on `main`** (22 commits,
+`fe7246a..1c258fe`): spec `docs/superpowers/specs/2026-07-12-game-manager-design.md`
+(see its **Post-implementation notes**), plan `docs/superpowers/plans/2026-07-12-game-manager.md`,
+execution ledger `.superpowers/sdd/progress.md` (gitignored).
+- **`dotnet/LaserTag.Host`** — Generic Host console REPL: `devices`,
+  `start dm 5m [--kill N --hit N --waves 30s]`, `start elim [--timer 10m]`,
+  `score`, `stop`, `reset|activate|deactivate [id]`, `quit`. Subnet-broadcast
+  auto-discovery (RFC1918 + gateway-preferred; `--broadcast <ip>` override —
+  this box's virtual adapters made naive discovery flap between subnets).
+- **`dotnet/LaserTag.Game`** — `MatchEngine` (Lobby→Countdown→Running→Finished,
+  HB hp-reconciliation, rejoin handling incl. dead-stay-dead) + `IGameMode`
+  plugins: `DeathmatchMode` (hit +1/kill +5, per-player 10 s or wave respawns),
+  `EliminationMode` (last team standing, offline exclusion, timer cap).
+- **CTL grammar v2** in `LaserTag.Client`: `countdown n=`, `gameover winner=`,
+  `activate`/`deactivate`, optional `id=` on every verb; `ParseControl`;
+  `UdpControlSender` (subnet broadcast, 3× repeat ~20 ms).
+- **⚠ Multi-device caveat (documented in README/spec):** current firmware
+  ignores unknown CTL keys, so `id=`-addressed reset/start is applied by EVERY
+  device. Single-target bench play fine; multi-device DM/Elim needs the
+  **Spec B firmware id= filter first** (Spec B's first item).
+- **Damage multiplier (firmware, NEEDS S3 REFLASH):** global
+  `damageMultiplier` 1–32 (presets 1/2/4/8/16 + custom) + per-SHOOTER-team
+  `teamDamageMult` handicap (0 = inherit). `mult` serial verb; REST PATCH;
+  NVS. EVT reports effective damage. 16x: dmg-2 rocket = full 32 hp.
+- **Quack SFX staged:** `assets/sfx/quack-attack{,-3s}.wav` (16 kHz mono s16
+  from the user's MP3). Use the **3 s** trim (full 10 s would trip the ~5 s
+  WDT with blocking playback); audition = copy to card as `/sfx/test.wav` +
+  `sdplay`. MAX98357A is a dumb PCM DAC — MP3 would need a firmware decoder
+  (libhelix/ESP8266Audio), noted as an option, not built.
+- Also this session: carrier **build guide**
+  `instructions/BUILD_LASERTAG_CARRIER_ESP32_MATRIX.md` (netlist-verified
+  jumper table, core vs optional stages, bring-up), PCB rev1 render embedded
+  in README/PCB_FROM_PLATFORMIO + **PCBWay referral link**, stale mDNS notes
+  fixed (mDNS resolves for ping/REST; espota still needs the IP), matrix OTA
+  port → `.33`, OpenAPI ConfigDoc backfilled (teamSfx/deathSfx/startHp + new
+  multiplier fields).
 
 ### Sound on the ESP32-S3-Matrix (committed `90f003a`)
 Wired a **MAX98357A I2S amp** to the S3 and built procedural SFX with per-team +
@@ -203,6 +241,18 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   not yet settled. Devices without a card must behave exactly as today.
 - `s=stunned` (post-hit cooldown, hp>0) vs `s=dead` (hp==0). Writes require a JSON
   Content-Type (ESP32 WebServer drops urlencoded bodies).
+- **Game manager decomposition = 3 specs, grammar-first** (agreed 2026-07-12):
+  Spec A host manager (done) / Spec B firmware verbs+id= / Spec C hunt+
+  retaliation. Grammar v2 designed once in Spec A so B/C plug in without wire
+  changes. Host architecture = **.NET Generic Host** (user's pick over thin
+  console) with one lock (`GameService`) serializing engine access.
+- **Scoring is per-TEAM** — the Vatos IR frame carries shooter team only, no
+  player id (needs future gun electronics). Score keys isolated so a player
+  key can slot in later. **Damage handicap keys by SHOOTER team** (damage
+  dealt), not victim team.
+- **Host never pushes authoritative hp** — devices own hp; host mirrors from
+  HB/EVT and issues respawns via `CTL reset`. Known limitation (spec notes):
+  a device reboot mid-match revives it (hp volatile) — accepted for now.
 
 ## Gotchas (carry forward — these cost real time)
 - **OTA flashing reliably:** use `espota.py` with an explicit host IP, e.g.
@@ -240,33 +290,51 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   toggle resets the S3 into bootloader) and **`NewLine="`n"`** (a trailing `\r`
   breaks `CTL`/verb parsing). Read with `ReadExisting()` after a short sleep.
 - **Contract tests run via `pio test -e native`** (NOT `pio run -e native`, which
-  tries to compile the Arduino `src/` and fails). 48 tests (see Tests above).
+  tries to compile the Arduino `src/` and fails). 51 tests (see Tests above).
+  .NET suite: `dotnet test dotnet/LaserTag.sln` (134).
 - Matrix stunned/dark interval is **1–5 s (TESTING)**; revert to 5–15 s for play.
 - WiFi 2.4GHz `CommunityFibre10Gb_28750`; creds in NVS (survive OTA). Set via
   `tools/set-wifi.ps1 -Port COMx -Ssid ... -Password ...`.
 
-## Recent Changes (audio session — since committed as `90f003a`)
-- `lib/Board/BoardProfile.{h,cpp}` — added `i2sBclkPin/i2sWsPin/i2sDinPin`
-  (S3=38/39/40, Lolin32=-1); S3 profile `audio=I2sDac`; 3 pins NVS-overridable.
-- `lib/Sound/Sound.{h,cpp}` — full I2S DAC playback; `playIndex(int)` (range-
-  guarded, logs); start/stop-per-clip idle silencing; `kVolume=0.15`; sfx
-  bookkeeping/query API; removed audition cycling; `cue()` no-op for I2sDac.
-- `lib/Sound/SfxData.h` — NEW, generated (7 procedural samples, ~220 KB).
-- `tools/gen_sfx.py` — NEW, numpy SFX generator (6 sirens + death cue).
-- `lib/ControlProto/ControlProto.{h,cpp}` — `ConfigDoc` gains `teamSfx` (keyed
-  map), `deathSfx`, `startHp`(validated 4/8/16/32); `CommandKind::Reset`.
-- `src/matrix_main.cpp` — team/death playback via `playIndex`; `teamSfxIndex()`;
-  fatal shot = death only; `config.startHp` replaces `StartHp` const; NVS
-  save/load of teamSfx/deathSfx/startHp; serial verbs `sfx`/`lives`; REST reset;
-  recurring `[sfx]` status line.
-- `test/test_controlproto/test_controlproto.cpp` — updated config golden +
-  `startHp` validation test (38 total then; now 48 — see Tests above).
+## Recent Changes (this session, 2026-07-12/13 — all committed, tree clean)
+- `dotnet/LaserTag.Game/` + `dotnet/LaserTag.Game.Tests/` — NEW: MatchEngine,
+  DeathmatchMode, EliminationMode, DurationParser, IGameMode/MatchContext/
+  state types (43 tests).
+- `dotnet/LaserTag.Host/` — NEW: Generic Host console (GameService lock,
+  UdpTelemetryService 4210, 250 ms tick service, Spectre REPL).
+- `dotnet/LaserTag.Client/` — grammar v2 (`ControlKind`/`Control`/`ParseControl`/
+  `FormatControl`), `IControlSender`, `UdpControlSender`, `BroadcastAddress`
+  (RFC1918 + gateway-preferred discovery).
+- `lib/ControlProto/` — `ConfigDoc` gains `damageMultiplier` (1–32) +
+  `teamDamageMult[4]` (0=inherit), serialize + validated PATCH.
+- `src/matrix_main.cpp` — `damageMultForTeam()` applied in `applyHit` (EVT
+  reports effective dmg); NVS `dmgMult`/`teamDmg<n>`; `mult` serial verb.
+- `test/test_controlproto/` — golden + 2 multiplier tests (native 51).
+- `dotnet/openapi/lasertag.yaml` — ConfigDoc backfill + multiplier fields.
+- `instructions/BUILD_LASERTAG_CARRIER_ESP32_MATRIX.md` — NEW build guide.
+- `assets/sfx/quack-attack{,-3s}.wav` — NEW staged clips.
+- `hardware/lasertag-carrier/board-render-rev1.png` — NEW, embedded in docs.
+- `README.md`/`PCB_FROM_PLATFORMIO.md`/`platformio.ini`/`tools/README.md` —
+  game-manager section + firmware-compat warning, build-guide/render/referral
+  links, mDNS note fixes, OTA port `.33`.
+- Specs/plans: `docs/superpowers/specs/2026-07-12-game-manager-design.md`
+  (+post-impl notes), `docs/superpowers/plans/2026-07-12-game-manager.md`.
 
 ## Next Steps
+**Immediately actionable:** (a) **flash the S3** (OTA to current IP or USB
+COM6) to pick up the damage multiplier, then bench-test `mult 8` +
+`fire 2 2`; (b) audition the quack: copy `assets/sfx/quack-attack-3s.wav` to
+a card as `/sfx/test.wav`, `sdplay`; (c) start **Spec B** (firmware pass —
+brainstorm → spec → plan; FIRST item = the CTL `id=` filter, then
+countdown/gameover cues, activate/deactivate, OLED-health; fold in 8b's
+configurable sound paths if scoping allows).
+
 0. **When PCBWay boards arrive (order: 10× rev1, link at top):** visually check
-   against `board-front.svg`; buy/gather parts per `hardware/lasertag-carrier/bom.csv`
+   against `board-front.svg` / `board-render-rev1.png`; buy/gather parts per
+   `hardware/lasertag-carrier/bom.csv`
    (BUY items: 100nF ceramics ×3, 2N2222A, sockets/headers; most passives in
-   stock); assemble one board (square pad = pin 1 everywhere; module 5V corner
+   stock); assemble per **`instructions/BUILD_LASERTAG_CARRIER_ESP32_MATRIX.md`**
+   (square pad = pin 1 everywhere; module 5V corner
    to J1's square pad; MAX98357A LRC into J3's square end; microSD 3V3 into
    J5's); bring-up: 5V current check before seating modules → seat S3 →
    `fire`/`sdplay`/`sfx` smoke tests. Then remove the temporary order-tracking
