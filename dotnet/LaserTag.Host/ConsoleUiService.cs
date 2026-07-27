@@ -1,3 +1,4 @@
+using LaserTag.Client;
 using LaserTag.Client.Models;
 using LaserTag.Game;
 using Microsoft.Extensions.Hosting;
@@ -20,7 +21,7 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
 
     private void Repl(CancellationToken stoppingToken)
     {
-        AnsiConsole.MarkupLine("[bold]LaserTag host[/] — commands: devices, start dm <dur> [[--kill N]] [[--hit N]] [[--waves <dur>]], start elim [[--timer <dur>]], start chase <dur|--first N> [[--min d]] [[--max d]] [[--gap d]] [[--penalty N]] [[--dark]], score, stop, reset [[id]], activate [[id]], deactivate [[id]], quit");
+        AnsiConsole.MarkupLine("[bold]LaserTag host[/] — commands: devices, start dm <dur> [[--kill N]] [[--hit N]] [[--waves <dur>]], start elim [[--timer <dur>]], start chase <dur|--first N> [[--min d]] [[--max d]] [[--gap d]] [[--penalty N]] [[--dark]], score, stop, reset [[id]], activate [[id]], deactivate [[id]], fw [[bin]], ota <id|all> [[--force]] [[bin]], quit");
         while (!stoppingToken.IsCancellationRequested)
         {
             string? line = Console.ReadLine();
@@ -77,6 +78,12 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
                 break;
             case "deactivate":
                 game.SendControl(new Control { Kind = ControlKind.Deactivate, Id = args.ElementAtOrDefault(1) });
+                break;
+            case "fw":
+                PrintFirmware(args.ElementAtOrDefault(1));
+                break;
+            case "ota":
+                RunOta(args);
                 break;
             default:
                 AnsiConsole.MarkupLine("[yellow]unknown command[/]");
@@ -148,6 +155,97 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
     {
         int i = Array.IndexOf(args, name);
         return i >= 0 && i + 1 < args.Length && DurationParser.TryParse(args[i + 1], out TimeSpan v) ? v : null;
+    }
+
+    // Default firmware image: the OTA build's bin, falling back to the plain
+    // env (fleet-ota spec).
+    private static readonly string[] DefaultBins =
+    [
+        Path.Combine(".pio", "build", "esp32-s3-matrix-ota", "firmware.bin"),
+        Path.Combine(".pio", "build", "esp32-s3-matrix", "firmware.bin"),
+    ];
+
+    private static string? ResolveBin(string? arg)
+    {
+        if (arg is { } p && !p.StartsWith("--", StringComparison.Ordinal))
+        {
+            return File.Exists(p) ? p : null;
+        }
+
+        return DefaultBins.FirstOrDefault(File.Exists);
+    }
+
+    private void PrintFirmware(string? pathArg)
+    {
+        string? bin = ResolveBin(pathArg);
+        string? available = bin is null ? null : FirmwareImage.TryReadVersion(bin);
+        AnsiConsole.MarkupLineInterpolated(
+            $"available: [bold]{available ?? "unknown"}[/] {(bin is null ? "(no firmware.bin found — build first)" : $"({bin})")}");
+        var table = new Table().AddColumns("id", "host", "ip", "running", "verdict");
+        foreach (var e in game.Devices())
+        {
+            Heartbeat hb = e.LastHeartbeat;
+            FirmwareVerdict verdict = FirmwareImage.Compare(hb.Fw, available);
+            string colour = verdict switch
+            {
+                FirmwareVerdict.Current => "green",
+                FirmwareVerdict.Outdated => "red",
+                FirmwareVerdict.Newer => "yellow",
+                _ => "grey",
+            };
+            table.AddRow(e.Id, hb.Source, hb.Ip, hb.Fw, $"[{colour}]{verdict}[/]");
+        }
+
+        AnsiConsole.Write(table);
+    }
+
+    private void RunOta(string[] args)
+    {
+        string? target = args.ElementAtOrDefault(1);
+        if (target is null)
+        {
+            AnsiConsole.MarkupLine("[yellow]usage: ota <id|all> [[--force]] [[path-to-firmware.bin]][/]");
+            return;
+        }
+
+        bool force = args.Contains("--force");
+        string? bin = ResolveBin(args.Skip(2).FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal)));
+        if (bin is null)
+        {
+            AnsiConsole.MarkupLine("[red]no firmware.bin found — build (pio run -e esp32-s3-matrix-ota) or pass a path.[/]");
+            return;
+        }
+
+        string? available = FirmwareImage.TryReadVersion(bin);
+        var candidates = game.Devices()
+            .Where(e => e.Online)
+            .Where(e => target == "all" ? force || FirmwareImage.Compare(e.LastHeartbeat.Fw, available) == FirmwareVerdict.Outdated
+                                        : e.Id == target)
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            AnsiConsole.MarkupLine(target == "all"
+                ? "[green]fleet is current — nothing to update (use --force to re-push).[/]"
+                : $"[red]no online device with id {target}.[/]");
+            return;
+        }
+
+        AnsiConsole.MarkupLineInterpolated($"pushing [bold]{available ?? "?"}[/] ({bin}) to {candidates.Count} device(s)…");
+        var updater = new FirmwareUpdater();
+
+        // Sequential on purpose: parallel flash writes on a shared 2.4 GHz
+        // channel mostly just fight each other for airtime.
+        foreach (var e in candidates)
+        {
+            AnsiConsole.MarkupLineInterpolated($"  {e.Id} ({e.LastHeartbeat.Ip}) … ");
+            FirmwareUpdater.Result r = updater
+                .UploadAsync(e.LastHeartbeat.Ip, bin, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+            AnsiConsole.MarkupLineInterpolated(r.Ok
+                ? $"  [green]{e.Id} OK[/] — rebooting into the new image"
+                : $"  [red]{e.Id} FAILED[/]: {r.Error} (pre-2.1.0 firmware has no /api/update — flash once via espota)");
+        }
     }
 
     private void PrintDevices()

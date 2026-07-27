@@ -304,7 +304,18 @@ dotnet run --project dotnet/LaserTag.Host            # auto-detects the subnet b
 # devices | start dm 5m [--kill 5 --hit 1 --waves 30s] | start elim [--timer 10m]
 # start chase <dur|--first N> [--min d] [--max d] [--gap d] [--penalty N] [--dark]
 # score | stop | reset [id] | activate [id] | deactivate [id] | quit
+# fw [bin]                — fleet firmware table: running vs available (from the
+#                           LTFW: marker embedded in firmware.bin)
+# ota <id|all> [--force]  — push firmware over HTTP to online boards; `all`
+#                           targets outdated boards only (--force re-pushes)
 ```
+
+**Fleet OTA (firmware ≥ 2.1.0):** every board serves `POST /api/update`
+(multipart firmware upload → verified flash → reboot) and a browser upload
+form at `GET /update`, so updates work from the host CLI, a browser, or the
+future phone app — no espota/python needed. Spec:
+`docs/superpowers/specs/2026-07-27-fleet-ota-design.md`. Boards on older
+firmware need one last espota flash to gain the endpoint.
 
 Match rules live in `dotnet/LaserTag.Game` (`IGameMode`: Deathmatch,
 Elimination, Chase — see `docs/superpowers/specs/2026-07-27-chase-mode-design.md`).

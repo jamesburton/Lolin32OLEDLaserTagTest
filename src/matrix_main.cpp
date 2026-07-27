@@ -22,6 +22,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <Update.h>
 #include <WiFi.h>
 #include <driver/gpio.h>
 
@@ -40,8 +41,16 @@
 
 namespace cp = ControlProto;
 
-// Firmware version reported on the wire (contract §1.3 fw=).
-static const char *kFirmwareVersion = "2.0.0";
+// Firmware version reported on the wire (contract §1.3 fw=). BUMP THIS on
+// every behavioural firmware change — the host's fleet updater compares it
+// against the built image to decide who needs an OTA (fleet-ota spec).
+#define LT_FW_VERSION "2.1.0"
+static const char *kFirmwareVersion = LT_FW_VERSION;
+
+// Embedded marker so the host can read a firmware.bin's version by scanning
+// the raw image for "LTFW:" (fleet-ota spec — toolchain-proof alternative to
+// the app descriptor). Printed once at boot so the linker keeps it.
+static const char kFwMarker[] = "LTFW:" LT_FW_VERSION;
 
 // IR receiver output (free header pin; GPIO10-14 are taken by IMU/matrix)
 #define IR_PIN 1
@@ -707,11 +716,69 @@ void handleCommand() {
   sendJson(200, "{\"ok\":true}");
 }
 
+// --- HTTP OTA (fleet-ota spec) ----------------------------------------------
+
+// Streamed firmware upload for POST /api/update. Update.h only commits a
+// fully written, verified image, so a failed/aborted upload leaves the
+// running firmware untouched.
+void handleUpdateUpload() {
+  HTTPUpload &up = TagNet::httpServer().upload();
+  if (up.status == UPLOAD_FILE_START) {
+    Serial.printf("[ota] http update start: %s\n", up.filename.c_str());
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+      Update.printError(Serial);
+    }
+  } else if (up.status == UPLOAD_FILE_WRITE) {
+    if (Update.isRunning() &&
+        Update.write(up.buf, up.currentSize) != up.currentSize) {
+      Update.printError(Serial);
+    }
+  } else if (up.status == UPLOAD_FILE_END) {
+    if (Update.end(true)) {
+      Serial.printf("[ota] http update ok: %u bytes\n", (unsigned)up.totalSize);
+    } else {
+      Update.printError(Serial);
+    }
+  } else if (up.status == UPLOAD_FILE_ABORTED) {
+    Update.abort();
+    Serial.println("[ota] http update aborted");
+  }
+}
+
+// Completion handler for POST /api/update: report the outcome, and reboot
+// into the new image on success (short delay so the response flushes first).
+void handleUpdateDone() {
+  if (Update.hasError()) {
+    char err[96];
+    snprintf(err, sizeof(err), "{\"error\":\"update failed: %s\"}",
+             Update.errorString());
+    sendJson(500, err);
+    return;
+  }
+  sendJson(200, "{\"ok\":true,\"version\":\"" LT_FW_VERSION "\"}");
+  delay(1000);
+  ESP.restart();
+}
+
+// Minimal browser upload page (GET /update) posting to /api/update, so a
+// single board can be flashed tool-free from any browser on the LAN.
+void handleUpdatePage() {
+  TagNet::httpServer().send(
+      200, "text/html",
+      "<!doctype html><title>lasertag OTA</title>"
+      "<h3>Firmware update (running " LT_FW_VERSION ")</h3>"
+      "<form method=POST action=/api/update enctype=multipart/form-data>"
+      "<input type=file name=fw accept=.bin> <input type=submit value=Flash>"
+      "</form><p>Board reboots automatically on success.</p>");
+}
+
 // Register the /api/* routes. Each path is HTTP_ANY so wrong-method requests
 // reach the handler (which answers 405) rather than falling to onNotFound
 // (which answers 404 for genuinely unknown routes — contract §8).
 void registerRoutes() {
   WebServer &s = TagNet::httpServer();
+  s.on("/api/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);
+  s.on("/update", HTTP_GET, handleUpdatePage);
   s.on("/api/status", HTTP_ANY, []() {
     if (TagNet::httpServer().method() == HTTP_GET) {
       handleStatus();
@@ -729,6 +796,10 @@ void registerRoutes() {
 
 void setup() {
   Serial.begin(115200);
+
+  // Reference the embedded version marker so the linker keeps it in the image
+  // (the host's fleet updater scans firmware.bin for it).
+  Serial.printf("boot %s\n", kFwMarker);
 
   Board::BoardProfile profile = Board::active();
   BoardNvs::loadOverrides(profile);

@@ -150,6 +150,55 @@ paths:
           $ref: "#/components/responses/NotFound"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
+  /api/update:
+    post:
+      tags: [runtime]
+      summary: Flash a firmware image over HTTP (fleet OTA).
+      description: >
+        Accepts a firmware .bin as multipart/form-data (the ESP32 WebServer's
+        upload machinery only parses multipart bodies; the file part name is
+        arbitrary). The image is streamed into the OTA partition via Update.h,
+        which only commits a fully written, verified image — a failed upload
+        leaves the running firmware untouched. On success the device replies
+        and then reboots into the new image (~1 s later). A browser upload
+        form for single boards is served at GET /update (text/html). Available
+        since firmware 2.1.0.
+      operationId: updateFirmware
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                fw:
+                  type: string
+                  format: binary
+                  description: The firmware image (firmware.bin).
+      responses:
+        "200":
+          description: >
+            Image committed; the device reboots into it about a second after
+            responding. `version` is the version that produced the response
+            (the pre-reboot running version).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, version]
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  version:
+                    type: string
+                    example: "2.1.0"
+        "500":
+          description: Update failed (bad image, flash error); firmware unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDoc"
   /api/command:
     post:
       tags: [runtime]
