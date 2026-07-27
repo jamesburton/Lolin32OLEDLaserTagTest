@@ -643,9 +643,13 @@ void setup() {
                             GPIO_DRIVE_CAP_0);
   digitalWrite(ACT_LED_PIN, LOW);
 
-  TagNet::begin("lasertag-matrix");
-
+  // Boot with the persisted hostname so multiple boards co-exist on mDNS/OTA.
+  // Only the hostname is read pre-begin: deviceId comes from TagNet::begin(),
+  // so the full loadConfig() must stay after it.
   nvs.begin("matrix", false);
+  String bootHost = nvs.getString("hostname", "lasertag-matrix");
+  TagNet::begin(bootHost.c_str());
+
   loadConfig();
   hp = config.startHp; // adopt the configured starting health
   HitDisplay::setBrightness(config.brightness);
