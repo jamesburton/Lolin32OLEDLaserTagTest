@@ -120,7 +120,11 @@ paths:
   /api/mode:
     post:
       tags: [runtime]
-      summary: Set the runtime mode and timings (not persisted).
+      summary: >
+        Set the runtime mode and timings (not persisted). Recognised mode
+        values include the idle animations (e.g. team-colours) and
+        "scoreboard", which puts the board into standalone scoreboard
+        display driven by CTL Score pushes.
       operationId: setMode
       requestBody:
         required: true
@@ -367,6 +371,12 @@ components:
             "2": 0
             "3": 0
             "4": 0
+        chaseColour:
+          type: string
+          description: >
+            Chase-mode active spin colour. Default #FFA500.
+          pattern: "^#[0-9A-Fa-f]{6}$"
+          example: "#FFA500"
     ConfigPatch:
       type: object
       description: >
@@ -391,6 +401,11 @@ components:
           additionalProperties:
             type: string
             pattern: "^#[0-9A-Fa-f]{6}$"
+        chaseColour:
+          type: string
+          description: >
+            Chase-mode active spin colour. Default #FFA500.
+          pattern: "^#[0-9A-Fa-f]{6}$"
     ModeTimings:
       type: object
       description: Mode timing parameters; only provided keys are sent.

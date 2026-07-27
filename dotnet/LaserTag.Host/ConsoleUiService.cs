@@ -20,7 +20,7 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
 
     private void Repl(CancellationToken stoppingToken)
     {
-        AnsiConsole.MarkupLine("[bold]LaserTag host[/] — commands: devices, start dm <dur> [[--kill N]] [[--hit N]] [[--waves <dur>]], start elim [[--timer <dur>]], score, stop, reset [[id]], activate [[id]], deactivate [[id]], quit");
+        AnsiConsole.MarkupLine("[bold]LaserTag host[/] — commands: devices, start dm <dur> [[--kill N]] [[--hit N]] [[--waves <dur>]], start elim [[--timer <dur>]], start chase <dur|--first N> [[--min d]] [[--max d]] [[--gap d]] [[--penalty N]] [[--dark]], score, stop, reset [[id]], activate [[id]], deactivate [[id]], quit");
         while (!stoppingToken.IsCancellationRequested)
         {
             string? line = Console.ReadLine();
@@ -107,9 +107,28 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
         {
             mode = new EliminationMode(DurationOption(args, "--timer"));
         }
+        else if (kind == "chase")
+        {
+            TimeSpan? duration = DurationParser.TryParse(args.ElementAtOrDefault(2), out TimeSpan d) ? d : null;
+            int? firstTo = IntOption(args, "--first");
+            if (duration is null && firstTo is null)
+            {
+                AnsiConsole.MarkupLine("[yellow]usage: start chase <dur and/or --first N> [[--min d]] [[--max d]] [[--gap d]] [[--penalty N]] [[--dark]][/]");
+                return;
+            }
+
+            mode = new ChaseMode(
+                duration,
+                firstTo,
+                DurationOption(args, "--min"),
+                DurationOption(args, "--max"),
+                DurationOption(args, "--gap"),
+                IntOption(args, "--penalty") ?? 0,
+                args.Contains("--dark") ? "dark" : "score");
+        }
         else
         {
-            AnsiConsole.MarkupLine("[yellow]usage: start dm <dur> | start elim[/]");
+            AnsiConsole.MarkupLine("[yellow]usage: start dm <dur> | start elim | start chase[/]");
             return;
         }
 

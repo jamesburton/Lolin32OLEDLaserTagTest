@@ -302,21 +302,28 @@ dotnet run --project dotnet/LaserTag.Smoke -- 192.168.1.24 20 # live REST + UDP 
 ```sh
 dotnet run --project dotnet/LaserTag.Host            # auto-detects the subnet broadcast
 # devices | start dm 5m [--kill 5 --hit 1 --waves 30s] | start elim [--timer 10m]
+# start chase <dur|--first N> [--min d] [--max d] [--gap d] [--penalty N] [--dark]
 # score | stop | reset [id] | activate [id] | deactivate [id] | quit
 ```
 
 Match rules live in `dotnet/LaserTag.Game` (`IGameMode`: Deathmatch,
-Elimination). Scoring is per-team — the IR protocol carries the shooter's
-team, not a player id. CTL grammar v2 (`countdown`, `gameover`,
-`activate`/`deactivate`, optional `id=` addressing) is emitted by the host
-today; firmware behaviours for the new verbs land in Spec B.
+Elimination, Chase — see `docs/superpowers/specs/2026-07-27-chase-mode-design.md`).
+Scoring is per-team — the IR protocol carries the shooter's team, not a
+player id. CTL grammar v2 (`countdown`, `gameover`, `activate`/`deactivate`,
+optional `id=` addressing) is emitted by the host today.
 
-**Firmware compatibility (until Spec B):** current firmware ignores unknown
-CTL keys, so an `id=`-addressed `reset`/`start` is applied by *every* device
-on the arena, not just the targeted one — per-player respawns and rejoin
-re-issues heal the whole arena, not just the intended target. Single-target
-bench play is fine; multi-device Deathmatch/Elimination needs the Spec B
-id-filter landed on firmware first.
+Boards double as scoreboards during any match — the host pushes CTL Score
+updates on change plus a 1 s live refresh, so a board's own OLED/matrix shows
+the running score without extra wiring. A board can also run standalone as a
+dedicated scoreboard outside of a match via `POST /api/mode {"mode":
+"scoreboard"}`.
+
+**Firmware compatibility:** firmware at or above this build enforces `id=`
+addressing, so an `id=`-addressed `reset`/`start`/`activate`/`deactivate`
+only reaches the targeted device. Boards still running older firmware ignore
+the `id=` filter and apply addressed CTLs to every device on the arena —
+reflash all boards to the current firmware before running a multi-device
+match.
 
 ---
 

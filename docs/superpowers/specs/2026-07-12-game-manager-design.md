@@ -164,15 +164,14 @@ next `start`.
 Findings from the final-review fix wave on the `LaserTag.Game`/`LaserTag.Host`
 implementation, before handoff to Spec B:
 
-- **`id=` compat consequence:** current firmware ignores unknown CTL keys, so
-  it also ignores `id=` — an `id=`-addressed `reset`/`start` is applied by
-  *every* device on the arena, not just the target. This means per-player
-  respawns (Deathmatch) and rejoin re-issues (`CTL start id=` /
-  `CTL reset hp=0 id=`) currently heal or reset the *whole* arena, not the
-  intended device. Single-target bench play is unaffected; multi-device
-  Deathmatch/Elimination is not safe to run until firmware. **This makes the
-  `id=` filter Spec B's first firmware item** — everything else in Spec B can
-  follow, but per-player addressing is broken without it.
+- **`id=` compat consequence — RESOLVED:** firmware now enforces `id=`
+  addressing (CTL grammar v2.1), so an `id=`-addressed `reset`/`start`/
+  `activate`/`deactivate` reaches only the targeted device. Boards still
+  running older firmware still ignore the `id=` filter and apply addressed
+  CTLs to every device on the arena, so all boards must be reflashed before a
+  multi-device match. See
+  `docs/superpowers/specs/2026-07-27-chase-mode-design.md` for the firmware
+  work that landed the fix.
 - **Device reboot mid-match revives it:** hp is device-authoritative and
   volatile (not persisted across reboot). A device that reboots mid-match
   reports hp>0 on its next heartbeat and the engine treats that as the

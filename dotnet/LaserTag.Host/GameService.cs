@@ -15,6 +15,9 @@ public sealed class GameService
     private readonly DeviceRoster _roster;
     private readonly IControlSender _sender;
     private readonly Dictionary<string, bool> _lastOnline = new(StringComparer.Ordinal);
+    private readonly Dictionary<int, int> _pushedScores = [];
+    private DateTimeOffset _lastScorePushAt = DateTimeOffset.MinValue;
+    private bool _finalScoresPushed;
 
     /// <summary>Raised with a printable line whenever something noteworthy happens.</summary>
     public event Action<string>? Event;
@@ -59,6 +62,7 @@ public sealed class GameService
         MatchPhase before, after;
         int? winner = null;
         List<string> offlineIds = [];
+        MatchSnapshot snap;
         lock (_gate)
         {
             foreach (RosterEntry entry in _roster.GetAll())
@@ -76,9 +80,10 @@ public sealed class GameService
             before = _engine.Phase;
             _engine.Tick();
             after = _engine.Phase;
+            snap = _engine.Snapshot();
             if (after == MatchPhase.Finished)
             {
-                winner = _engine.Snapshot().Winner;
+                winner = snap.Winner;
             }
         }
 
@@ -95,6 +100,32 @@ public sealed class GameService
             Event?.Invoke(after == MatchPhase.Finished
                 ? $"GAME OVER — winner: {(winner == 0 ? "draw" : $"team {winner}")}"
                 : $"PHASE {before} -> {after}");
+        }
+
+        // Score display push (spec §2.1): on change + a 1 s refresh while a
+        // match is live, plus one final push at Finished so gameover boards
+        // hold the true final board. hp is never pushed — scores only.
+        bool live = snap.Phase is MatchPhase.Running or MatchPhase.Countdown;
+        bool changed = snap.TeamScores.Count != _pushedScores.Count ||
+            snap.TeamScores.Any(kv => _pushedScores.GetValueOrDefault(kv.Key) != kv.Value);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        if ((live && (changed || now - _lastScorePushAt >= TimeSpan.FromSeconds(1))) ||
+            (snap.Phase == MatchPhase.Finished && changed && !_finalScoresPushed))
+        {
+            _pushedScores.Clear();
+            foreach ((int team, int pts) in snap.TeamScores)
+            {
+                _pushedScores[team] = pts;
+            }
+
+            _lastScorePushAt = now;
+            _finalScoresPushed = snap.Phase == MatchPhase.Finished;
+            _ = _sender.SendAsync(new Control { Kind = ControlKind.Score, Scores = new Dictionary<int, int>(_pushedScores) });
+        }
+
+        if (live)
+        {
+            _finalScoresPushed = false;
         }
     }
 
