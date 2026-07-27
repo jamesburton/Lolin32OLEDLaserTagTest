@@ -870,7 +870,9 @@ void loop() {
   // latest scores and skip the game visual machine entirely (it also ignores
   // activate — see handleControl — and ignores IR, so it never scores).
   if (strcmp(activeMode, "scoreboard") == 0) {
-    if (now - lastAnimMs >= 250) {
+    // Signed elapsed-time compare: lastAnimMs may sit in the future (the
+    // post-hit flash hold), which would wrap an unsigned subtraction.
+    if ((int32_t)(now - lastAnimMs) >= 250) {
       lastAnimMs = now;
       uint8_t grid[64];
       cp::scoreGrid(chaseScores, config.enabledTeams, config.enabledTeamsCount,
@@ -980,7 +982,9 @@ void loop() {
       }
       penaltyBlinkUntilMs = 0;
     }
-    if (now - lastAnimMs >= 250) {
+
+    // Signed compare: the post-hit flash hold parks lastAnimMs in the future.
+    if ((int32_t)(now - lastAnimMs) >= 250) {
       lastAnimMs = now;
       if (chaseDisplayScore && haveScores) {
         uint8_t grid[64];
