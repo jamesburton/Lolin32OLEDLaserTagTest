@@ -150,6 +150,7 @@ bool saveConfig() {
     nvs.putInt(key, config.teamDamageMult[i]);
   }
   nvs.putString("hostname", config.hostname);
+  nvs.putString("chaseCol", config.chaseColour); // NVS keys are max 15 chars
   return true;
 }
 
@@ -208,6 +209,12 @@ void loadConfig() {
     snprintf(key, sizeof(key), "teamDmg%d", config.teamIndex[i]);
     config.teamDamageMult[i] = nvs.getInt(key, 0);
   }
+
+  // Chase active-spin colour (default amber); validated on PATCH, so anything
+  // stored here is already "#RRGGBB".
+  String chc = nvs.getString("chaseCol", "#FFA500");
+  strncpy(config.chaseColour, chc.c_str(), sizeof(config.chaseColour) - 1);
+  config.chaseColour[sizeof(config.chaseColour) - 1] = '\0';
 }
 
 // --- LEDs -------------------------------------------------------------------
@@ -350,10 +357,38 @@ void handleControl(const cp::Control &c) {
     haveScores = true;
     break;
   case cp::ControlKind::ChaseOn:
+    // Enter chase: every board goes dormant (dim scoreboard or dark) until the
+    // host activates it. hp is untouched for the whole mode.
+    chaseOn = true;
+    chasePenaltyFb = c.penalty != 0;
+    chaseDisplayScore = c.displayScore;
+    chaseWindowEndMs = 0;
+    vis = Vis::ChaseDormant;
+    emitState("dormant", -1);
+    break;
   case cp::ControlKind::ChaseOff:
+    chaseOn = false;
+    haveScores = false;
+    vis = Vis::Rainbow;
+    emitState("idle", -1);
+    break;
   case cp::ControlKind::Activate:
+    // Standalone-scoreboard boards never join the chase pool.
+    if (strcmp(activeMode, "scoreboard") == 0) {
+      break;
+    }
+    vis = Vis::ChaseActive;
+    spinPhase = 0;
+    // The window timer lives here (spec §2.1): a lost deactivate can never
+    // leave this board lit.
+    chaseWindowEndMs = c.hasT ? millis() + c.t : 0;
+    emitState("active", -1);
+    break;
   case cp::ControlKind::Deactivate:
-    break; // chase state machine — wired next
+    chaseWindowEndMs = 0;
+    vis = chaseOn ? Vis::ChaseDormant : Vis::Rainbow;
+    emitState("dormant", -1);
+    break;
   case cp::ControlKind::None:
     break;
   }
@@ -798,9 +833,51 @@ void loop() {
       TagNet::event(line.c_str());
     }
 
-    if (ok && vis == Vis::Rainbow) {
-      applyHit(cp::tagEventFromVatosShot(shot.team, shot.damage));
+    // Dedicated scoreboard boards ignore IR entirely (spec §3.2).
+    if (ok && strcmp(activeMode, "scoreboard") != 0) {
+      if (vis == Vis::Rainbow) {
+        applyHit(cp::tagEventFromVatosShot(shot.team, shot.damage));
+      } else if (vis == Vis::ChaseActive) {
+        // Chase success: scoring is host-side; hp untouched. Team flash + siren,
+        // then straight back to dormant awaiting the next activation.
+        char buf[128];
+        cp::formatHitEvent(buf, sizeof(buf), config.deviceId, shot.team,
+                           shot.damage, "vatos", hp, millis());
+        TagNet::event(buf);
+        Sound::playIndex(teamSfxIndex(shot.team));
+        HitDisplay::flashTeam(shot.team);
+        chaseWindowEndMs = 0;
+        penaltyBlinkUntilMs = 0;
+        lastAnimMs = millis() + 400; // hold the team flash ~400 ms
+        vis = Vis::ChaseDormant;
+        emitState("dormant", -1);
+      } else if (vis == Vis::ChaseDormant) {
+        // Wrong target: report it (the host may penalize) with local feedback
+        // only when the penalty flag is on.
+        char buf[128];
+        cp::formatDormantHitEvent(buf, sizeof(buf), config.deviceId, shot.team,
+                                  shot.damage, "vatos", hp, millis());
+        TagNet::event(buf);
+        if (chasePenaltyFb) {
+          Sound::cue(Sound::Cue::Hit);
+          penaltyBlinkUntilMs = millis() + 300;
+        }
+      }
     }
+  }
+
+  // A board in REST mode=scoreboard is a dedicated wall display: paint the
+  // latest scores and skip the game visual machine entirely (it also ignores
+  // activate — see handleControl — and ignores IR, so it never scores).
+  if (strcmp(activeMode, "scoreboard") == 0) {
+    if (now - lastAnimMs >= 250) {
+      lastAnimMs = now;
+      uint8_t grid[64];
+      cp::scoreGrid(chaseScores, config.enabledTeams, config.enabledTeamsCount,
+                    grid);
+      HitDisplay::scoreboard(grid, 1, 1);
+    }
+    return; // end of loop() work for scoreboard boards
   }
 
   switch (vis) {
@@ -894,8 +971,46 @@ void loop() {
     }
     break;
   }
-  case Vis::ChaseDormant:
-  case Vis::ChaseActive:
-    break; // chase rendering — wired next
+  case Vis::ChaseDormant: {
+    // The blink timer doubles as the post-timeout red wipe (see ChaseActive).
+    if (penaltyBlinkUntilMs != 0) {
+      if (now < penaltyBlinkUntilMs) {
+        HitDisplay::solid({48, 0, 0}); // dim red penalty blink
+        break;
+      }
+      penaltyBlinkUntilMs = 0;
+    }
+    if (now - lastAnimMs >= 250) {
+      lastAnimMs = now;
+      if (chaseDisplayScore && haveScores) {
+        uint8_t grid[64];
+        cp::scoreGrid(chaseScores, config.enabledTeams,
+                      config.enabledTeamsCount, grid);
+        HitDisplay::scoreboard(grid, 1, 4); // dim: 25 % channel scale
+      } else {
+        HitDisplay::dark();
+      }
+    }
+    break;
+  }
+  case Vis::ChaseActive: {
+    if (chaseWindowEndMs != 0 && now >= chaseWindowEndMs) {
+      // Unhit inside the window: brief red "lost it" wipe, then dormant.
+      chaseWindowEndMs = 0;
+      HitDisplay::solid({128, 0, 0});
+      penaltyBlinkUntilMs = now + 300; // reuse the blink timer for the wipe
+      vis = Vis::ChaseDormant;
+      emitState("timeout", -1);
+      break;
+    }
+    if (now - lastAnimMs >= 60) {
+      lastAnimMs = now;
+      Board::Rgb c{255, 165, 0}; // amber fallback if chaseColour is malformed
+      Board::parseHexColour(config.chaseColour, c);
+      HitDisplay::spinFrame(c, spinPhase);
+      spinPhase = (uint8_t)((spinPhase + 1) % 28);
+    }
+    break;
+  }
   }
 }
