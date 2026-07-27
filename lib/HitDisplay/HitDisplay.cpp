@@ -127,6 +127,46 @@ void solid(Board::Rgb c) {
 
 void flashTeam(int team) { solid(teamRgb(team)); }
 
+void spinFrame(Board::Rgb c, uint8_t phase) {
+  if (kind != Board::HitDisplayKind::Ws2812Matrix || mw != 8 || mh != 8) {
+    solid(c); // RGB-LED fallback: steady colour
+    return;
+  }
+  // Clockwise perimeter walk: top row L->R, right col T->B, bottom row R->L,
+  // left col B->T = 28 cells.
+  static const uint8_t px[28] = {0, 1, 2, 3, 4, 5, 6, 7, 7, 7, 7, 7, 7, 7,
+                                 7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0};
+  static const uint8_t py[28] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6,
+                                 7, 7, 7, 7, 7, 7, 7, 7, 6, 5, 4, 3, 2, 1};
+  fill_solid(leds, numLeds, CRGB::Black);
+  for (uint8_t i = 0; i < 4; i++) {
+    const uint8_t p = (uint8_t)((phase + i) % 28);
+    leds[xy(px[p], py[p])] = toCrgb(c);
+  }
+  FastLED.show();
+}
+
+void scoreboard(const uint8_t grid[64], uint8_t num, uint8_t den) {
+  if (kind != Board::HitDisplayKind::Ws2812Matrix || mw != 8 || mh != 8 ||
+      den == 0) {
+    return;
+  }
+  fill_solid(leds, numLeds, CRGB::Black);
+  for (int y = 0; y < 8; y++) {
+    for (int x = 0; x < 8; x++) {
+      const uint8_t team = grid[y * 8 + x];
+      if (team == 0) {
+        continue;
+      }
+      Board::Rgb c = teamRgb(team);
+      leds[xy(x, y)] = CRGB((uint8_t)((uint16_t)c.r * num / den),
+                            (uint8_t)((uint16_t)c.g * num / den),
+                            (uint8_t)((uint16_t)c.b * num / den));
+    }
+  }
+  FastLED.show();
+}
+
 void dark() { solid({0, 0, 0}); }
 
 } // namespace HitDisplay

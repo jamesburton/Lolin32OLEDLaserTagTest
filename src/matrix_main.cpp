@@ -64,8 +64,20 @@ constexpr uint32_t HeartbeatMs = 2000;
 // Starting health is selectable (4/8/16/32) via config.startHp; the health bar
 // scales to the chosen max, so full health fills the central columns regardless.
 
-// Visual state machine (drives the LEDs).
-enum class Vis { Rainbow, Flash, Dark, Dead };
+// Visual state machine (drives the LEDs). The Countdown/GameOver* cues and the
+// Chase* states come from CTL v2.1 (chase-mode spec §3); they are orthogonal to
+// hp, which only the Rainbow/Flash/Dark/Dead path accounts for.
+enum class Vis {
+  Rainbow,
+  Flash,
+  Dark,
+  Dead,
+  Countdown,
+  GameOverScore,
+  GameOverFlood,
+  ChaseDormant,
+  ChaseActive
+};
 Vis vis = Vis::Rainbow;
 
 // Persisted config (the NVS ConfigDoc, contract §3 / §2.2).
@@ -89,6 +101,20 @@ uint32_t hitCount = 0;
 bool debugFrames = false;  // when on, broadcast every raw frame over UDP
 uint32_t lastHeartbeatMs = 0;
 uint32_t identifyUntilMs = 0; // white "identify" flash end time (0 = off)
+
+// --- Chase / cue runtime state (CTL v2.1; never persisted) ------------------
+bool chaseOn = false;          // between `chase on` and `chase off`/stop/gameover
+bool chasePenaltyFb = false;   // penalty feedback (red blink + tone) enabled
+bool chaseDisplayScore = true; // dormant boards: dim scoreboard vs dark
+int chaseScores[4] = {0, 0, 0, 0}; // last host-pushed team scores (teams 1..4)
+bool haveScores = false;       // true once the host has pushed a CTL score
+uint32_t chaseWindowEndMs = 0; // active self-timeout deadline (0 = none)
+uint8_t spinPhase = 0;         // chase active spin animation phase (0..27)
+uint32_t lastAnimMs = 0;       // spin/scoreboard frame pacing
+uint32_t penaltyBlinkUntilMs = 0; // dormant-hit penalty / timeout wipe end
+uint32_t cueUntilMs = 0;       // countdown end / gameover phase end
+int cueCount = 0;              // countdown seconds remaining tracker
+int gameoverWinner = 0;        // winning team for the gameover flood (0 = draw)
 
 Preferences nvs;
 
@@ -275,7 +301,10 @@ void handleControl(const cp::Control &c) {
     emitState("ready", hp);
     break;
   case cp::ControlKind::Stop:
-    // Leave play: neutral idle.
+    // Leave play: neutral idle. A stop always drops out of chase mode and
+    // forgets the pushed scores (the next match pushes its own).
+    chaseOn = false;
+    haveScores = false;
     vis = Vis::Rainbow;
     emitState("idle", -1);
     break;
@@ -295,6 +324,36 @@ void handleControl(const cp::Control &c) {
       emitState("respawn", hp);
     }
     break;
+  case cp::ControlKind::Countdown:
+    // Pre-match cue: flash + beep each second, dark between. Ends into
+    // Rainbow (the host's start CTL follows and re-arms hp anyway).
+    cueCount = c.hasN ? c.n : 5;
+    cueUntilMs = millis() + (uint32_t)cueCount * 1000;
+    vis = Vis::Countdown;
+    break;
+  case cp::ControlKind::GameOver:
+    gameoverWinner = c.hasWinner ? c.winner : 0;
+    chaseOn = false; // gameover always exits chase mode
+    if (haveScores) {
+      vis = Vis::GameOverScore; // 5 s scoreboard hold, then the winner flood
+      cueUntilMs = millis() + 5000;
+    } else {
+      vis = Vis::GameOverFlood;
+      cueUntilMs = millis() + 3000;
+    }
+    break;
+  case cp::ControlKind::Score:
+    // Display-only: the host stays authoritative for scores.
+    for (int i = 0; i < 4; i++) {
+      chaseScores[i] = c.scores[i];
+    }
+    haveScores = true;
+    break;
+  case cp::ControlKind::ChaseOn:
+  case cp::ControlKind::ChaseOff:
+  case cp::ControlKind::Activate:
+  case cp::ControlKind::Deactivate:
+    break; // chase state machine — wired next
   case cp::ControlKind::None:
     break;
   }
@@ -352,6 +411,11 @@ void onLine(const char *line) {
   // anything else — including our own/peers' hostname-prefixed HB/EVT echoes.
   cp::Control ctl;
   if (cp::parseControl(line, ctl)) {
+    // v2.1 addressing: an id-addressed CTL is for one device only. Absent id=
+    // means "everyone" (the historic broadcast behaviour).
+    if (ctl.hasId && strcmp(ctl.id, config.deviceId) != 0) {
+      return;
+    }
     handleControl(ctl);
     return;
   }
@@ -783,5 +847,55 @@ void loop() {
     // Hold dark at 0 hp until a respawn / CTL reset; nothing to animate.
     break;
   }
+  case Vis::Countdown: {
+    if (now >= cueUntilMs) {
+      vis = Vis::Rainbow;
+      break;
+    }
+    // One white blink + beep per remaining second boundary.
+    const int secsLeft = (int)((cueUntilMs - now + 999) / 1000);
+    if (secsLeft != cueCount) {
+      cueCount = secsLeft;
+      Sound::cue(Sound::Cue::Hit);
+    }
+    const bool on = ((cueUntilMs - now) % 1000) > 700; // 300 ms blink
+    if (on) {
+      HitDisplay::solid({64, 64, 64});
+    } else {
+      HitDisplay::dark();
+    }
+    break;
+  }
+  case Vis::GameOverScore: {
+    // Hold the final scoreboard at full brightness before the winner flood.
+    if (now - lastAnimMs >= 100) {
+      lastAnimMs = now;
+      uint8_t grid[64];
+      cp::scoreGrid(chaseScores, config.enabledTeams, config.enabledTeamsCount,
+                    grid);
+      HitDisplay::scoreboard(grid, 1, 1);
+    }
+    if (now >= cueUntilMs) {
+      vis = Vis::GameOverFlood;
+      cueUntilMs = now + 3000;
+    }
+    break;
+  }
+  case Vis::GameOverFlood: {
+    if (gameoverWinner > 0) {
+      HitDisplay::flashTeam(gameoverWinner);
+    } else {
+      HitDisplay::solid({96, 96, 96}); // draw: white
+    }
+    if (now >= cueUntilMs) {
+      haveScores = false;
+      vis = Vis::Rainbow;
+      emitState("idle", -1);
+    }
+    break;
+  }
+  case Vis::ChaseDormant:
+  case Vis::ChaseActive:
+    break; // chase rendering — wired next
   }
 }

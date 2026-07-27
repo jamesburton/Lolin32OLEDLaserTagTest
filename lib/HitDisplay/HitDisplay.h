@@ -22,6 +22,17 @@ void idle();              // matrix: flowing rainbow; RGB LED: off
 /// round(hp/maxHp * (4*H)) of those central cells stay lit (rainbow), the rest
 /// go dark, draining from the top. Falls back to idle() for non-matrix displays.
 void idleWithHealth(int hp, int maxHp);
+/// Chase "active target" animation: a 4-pixel arc chasing around the 28-pixel
+/// perimeter of the 8x8 matrix in colour c. Advance `phase` (0..27) per frame.
+/// Non-matrix displays fall back to a steady solid colour.
+void spinFrame(Board::Rgb c, uint8_t phase);
+
+/// Paints a scoreboard grid (row-major y*8+x; 0 = off, else the team index
+/// whose colour comes from the begin() colour map). Channels are scaled
+/// num/den so dormant boards can render dim (e.g. 1/4) and gameover full (1/1).
+/// Matrix-only: a no-op on other display kinds.
+void scoreboard(const uint8_t grid[64], uint8_t num, uint8_t den);
+
 void flashTeam(int team); // solid-fill the team colour (one frame)
 void solid(Board::Rgb c);
 void dark();
