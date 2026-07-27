@@ -71,6 +71,7 @@ public sealed class MatchEngine
                 Id = hb.Id,
                 Hostname = hb.Source,
                 Team = hb.Team,
+                Mode = hb.Mode,
                 Hp = hb.Hp,
                 Alive = hb.Hp > 0,
                 Online = true,
@@ -308,6 +309,7 @@ public sealed class MatchEngine
         bool died = hb.Hp <= 0 && p.Alive;
         _participants[hb.Id] = p with
         {
+            Mode = hb.Mode,
             Hp = hb.Hp,
             Alive = hb.Hp > 0,
             Online = true,

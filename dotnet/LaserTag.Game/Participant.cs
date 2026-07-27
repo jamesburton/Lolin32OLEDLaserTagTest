@@ -25,6 +25,13 @@ public sealed record Participant
     /// <summary>Gets a value indicating whether the device is currently online.</summary>
     public required bool Online { get; init; }
 
+    /// <summary>
+    /// Gets the device's last reported mode id (e.g. <c>idle</c>,
+    /// <c>scoreboard</c>). Chase excludes <c>scoreboard</c> boards — dedicated
+    /// wall displays — from its target pool.
+    /// </summary>
+    public string Mode { get; init; } = "";
+
     /// <summary>Gets the time of death, when dead; used by respawn policies.</summary>
     public DateTimeOffset? DiedAt { get; init; }
 }
