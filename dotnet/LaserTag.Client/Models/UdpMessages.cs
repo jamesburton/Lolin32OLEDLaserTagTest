@@ -74,6 +74,14 @@ public sealed record HitEvent : UdpInboundMessage
     /// that exceeds <see cref="int"/> range near wrap-around.
     /// </summary>
     public required long Ts { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether the hit was taken while the device was
+    /// dormant/inactive (chase mode, grammar v2.1). Parsed from
+    /// <c>dormant=1</c>; hp is unchanged and this may attract a shooter-team
+    /// penalty instead of a score.
+    /// </summary>
+    public bool Dormant { get; init; }
 }
 
 /// <summary>
@@ -126,6 +134,21 @@ public enum ControlKind
 
     /// <summary>Send a target dormant (<c>CTL deactivate</c>, grammar v2).</summary>
     Deactivate,
+
+    /// <summary>
+    /// <c>CTL chase on penalty= display=</c> — enter chase match mode.
+    /// </summary>
+    ChaseOn,
+
+    /// <summary>
+    /// <c>CTL chase off</c> — leave chase match mode, resume normal idle.
+    /// </summary>
+    ChaseOff,
+
+    /// <summary>
+    /// <c>CTL score 1= 2= 3= 4=</c> — push team scores for on-matrix display.
+    /// </summary>
+    Score,
 }
 
 /// <summary>
@@ -165,4 +188,30 @@ public sealed record Control
     /// device applies the CTL only if the id matches its own; valid on every kind.
     /// </summary>
     public string? Id { get; init; }
+
+    /// <summary>
+    /// Gets the optional self-timeout window in milliseconds. Valid for
+    /// <see cref="ControlKind.Activate"/> (grammar v2.1); when absent the
+    /// target stays active until told otherwise.
+    /// </summary>
+    public int? T { get; init; }
+
+    /// <summary>
+    /// Gets the optional penalty-feedback flag (<c>0</c> or <c>1</c>). Valid
+    /// for <see cref="ControlKind.ChaseOn"/> (grammar v2.1).
+    /// </summary>
+    public int? Penalty { get; init; }
+
+    /// <summary>
+    /// Gets the optional dormant-board display mode (<c>score</c> or
+    /// <c>dark</c>). Valid for <see cref="ControlKind.ChaseOn"/> (grammar v2.1).
+    /// </summary>
+    public string? Display { get; init; }
+
+    /// <summary>
+    /// Gets the optional per-team score map (team index 1..4 → points). Valid
+    /// for <see cref="ControlKind.Score"/> (grammar v2.1); teams absent from
+    /// the dictionary display as 0.
+    /// </summary>
+    public IReadOnlyDictionary<int, int>? Scores { get; init; }
 }

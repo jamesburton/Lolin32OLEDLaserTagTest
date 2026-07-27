@@ -225,4 +225,51 @@ public sealed class UdpMessageParserTests
     {
         Assert.Null(new UdpMessageParser().ParseControl(wire));
     }
+
+    [Theory]
+    [InlineData("CTL activate t=3200 id=eb20f8")]
+    [InlineData("CTL chase on penalty=1 display=dark")]
+    [InlineData("CTL chase off")]
+    [InlineData("CTL score 1=4 2=0 3=12 4=7")]
+    public void Control_RoundTrips_V21_Verbs(string wire)
+    {
+        var parser = new UdpMessageParser();
+        Control? parsed = parser.ParseControl(wire);
+        Assert.NotNull(parsed);
+        Assert.Equal(wire, parser.FormatControl(parsed!));
+    }
+
+    [Fact]
+    public void FormatControl_ChaseOn_EmitsPenaltyAndDisplay()
+    {
+        var parser = new UdpMessageParser();
+        string wire = parser.FormatControl(new Control
+        {
+            Kind = ControlKind.ChaseOn, Penalty = 0, Display = "score",
+        });
+        Assert.Equal("CTL chase on penalty=0 display=score", wire);
+    }
+
+    [Fact]
+    public void FormatControl_Score_OrdersTeamsAndPutsIdLast()
+    {
+        var parser = new UdpMessageParser();
+        string wire = parser.FormatControl(new Control
+        {
+            Kind = ControlKind.Score,
+            Scores = new Dictionary<int, int> { [2] = 9, [1] = 4 },
+            Id = "eb20f8",
+        });
+        Assert.Equal("CTL score 1=4 2=9 3=0 4=0 id=eb20f8", wire);
+    }
+
+    [Fact]
+    public void ParseHit_ReadsDormantFlag()
+    {
+        var parser = new UdpMessageParser();
+        UdpInboundMessage? msg = parser.Parse(
+            "lasertag-matrix3 EVT hit victim=eb20f8 shooterTeam=3 dmg=2 proto=vatos hp=32 ts=1234 dormant=1");
+        HitEvent hit = Assert.IsType<HitEvent>(msg);
+        Assert.True(hit.Dormant);
+    }
 }

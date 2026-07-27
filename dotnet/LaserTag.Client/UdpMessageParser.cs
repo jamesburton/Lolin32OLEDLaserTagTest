@@ -129,6 +129,7 @@ public sealed class UdpMessageParser
             Proto = proto,
             Hp = hp,
             Ts = ts,
+            Dormant = fields.TryGetValue("dormant", out string? dormant) && dormant == "1",
         };
     }
 
@@ -262,10 +263,36 @@ public sealed class UdpMessageParser
 
             case ControlKind.Activate:
                 sb.Append("activate");
+                if (control.T is { } t)
+                {
+                    sb.Append(" t=").Append(t.ToString(CultureInfo.InvariantCulture));
+                }
+
                 break;
 
             case ControlKind.Deactivate:
                 sb.Append("deactivate");
+                break;
+
+            case ControlKind.ChaseOn:
+                sb.Append("chase on");
+                sb.Append(" penalty=").Append((control.Penalty ?? 0).ToString(CultureInfo.InvariantCulture));
+                sb.Append(" display=").Append(control.Display ?? "score");
+                break;
+
+            case ControlKind.ChaseOff:
+                sb.Append("chase off");
+                break;
+
+            case ControlKind.Score:
+                sb.Append("score");
+                for (int team = 1; team <= 4; team++)
+                {
+                    int pts = control.Scores?.GetValueOrDefault(team) ?? 0;
+                    sb.Append(' ').Append(team).Append('=')
+                      .Append(pts.ToString(CultureInfo.InvariantCulture));
+                }
+
                 break;
 
             default:
@@ -307,6 +334,7 @@ public sealed class UdpMessageParser
         }
 
         ControlKind kind;
+        int fieldStart = 2;
         switch (tokens[1])
         {
             case "start": kind = ControlKind.Start; break;
@@ -316,10 +344,28 @@ public sealed class UdpMessageParser
             case "gameover": kind = ControlKind.GameOver; break;
             case "activate": kind = ControlKind.Activate; break;
             case "deactivate": kind = ControlKind.Deactivate; break;
+            case "score": kind = ControlKind.Score; break;
+            case "chase":
+                // "chase" carries a subtype token (on/off) before any k=v
+                // fields; peek it and shift the field-parsing start past it.
+                if (tokens.Length < 3)
+                {
+                    return null;
+                }
+
+                switch (tokens[2])
+                {
+                    case "on": kind = ControlKind.ChaseOn; break;
+                    case "off": kind = ControlKind.ChaseOff; break;
+                    default: return null;
+                }
+
+                fieldStart = 3;
+                break;
             default: return null;
         }
 
-        Dictionary<string, string> fields = ParseFields(tokens, start: 2);
+        Dictionary<string, string> fields = ParseFields(tokens, fieldStart);
 
         long? ts = null;
         if (fields.ContainsKey("ts"))
@@ -363,8 +409,64 @@ public sealed class UdpMessageParser
             winner = v;
         }
 
+        int? t = null;
+        if (fields.ContainsKey("t"))
+        {
+            if (!TryGetInt(fields, "t", out int v))
+            {
+                return null;
+            }
+
+            t = v;
+        }
+
+        int? penalty = null;
+        if (fields.ContainsKey("penalty"))
+        {
+            if (!TryGetInt(fields, "penalty", out int v))
+            {
+                return null;
+            }
+
+            penalty = v;
+        }
+
+        fields.TryGetValue("display", out string? display);
+
+        Dictionary<int, int>? scores = null;
+        if (kind == ControlKind.Score)
+        {
+            // Grammar v2.1 requires all four team keys; a missing or
+            // malformed one is a malformed CTL line, matching the existing
+            // "bad int → null" pattern for other verbs.
+            var s = new Dictionary<int, int>();
+            for (int team = 1; team <= 4; team++)
+            {
+                if (!TryGetInt(fields, team.ToString(CultureInfo.InvariantCulture), out int pts))
+                {
+                    return null;
+                }
+
+                s[team] = pts;
+            }
+
+            scores = s;
+        }
+
         fields.TryGetValue("id", out string? id);
 
-        return new Control { Kind = kind, Ts = ts, Hp = hp, N = n, Winner = winner, Id = id };
+        return new Control
+        {
+            Kind = kind,
+            Ts = ts,
+            Hp = hp,
+            N = n,
+            Winner = winner,
+            Id = id,
+            T = t,
+            Penalty = penalty,
+            Display = display,
+            Scores = scores,
+        };
     }
 }
