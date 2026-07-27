@@ -8,6 +8,51 @@ Codes & features behind interfaces so other guns/protocols and boards plug in.
 
 ## Current State
 
+### Chase mode + CTL v2.1 firmware pass SHIPPED; 4-board fleet (2026-07-26/27, overnight run)
+**Spec B's core is DELIVERED and the first new game mode is live.** Spec:
+`docs/superpowers/specs/2026-07-27-chase-mode-design.md`; plan:
+`docs/superpowers/plans/2026-07-27-chase-mode.md` (7 tasks, subagent-executed,
+commits `ab2d72d..fddadb4` + review fix `edfc007`).
+- **Firmware CTL v2.1** (`lib/ControlProto` + `src/matrix_main.cpp`): the
+  **`id=` filter is now ENFORCED** (multi-device play unblocked); `countdown`
+  (per-second blink+beep) and `gameover` (5 s scoreboard hold → winner flood)
+  cues; `activate [t=<ms>]`/`deactivate` dormancy with **device-side window
+  self-timeout** (`EVT state s=timeout`); `chase on penalty= display=` /
+  `chase off`; `score 1..4=` display pushes; dormant hits emit
+  `EVT hit … dormant=1` (no hp change). New `chaseColour` config (default
+  `#FFA500`, NVS `chaseCol`, PATCH-validated).
+- **Scoreboards on the 8×8** (`cp::scoreGrid`, native-tested): 2 teams =
+  middle-out columns (blank centre at 0, 1 LED = 1 pt, 32/side); 3–4 teams =
+  4×4 quadrants (16/team). Dormant chase boards show it dim (25 %); gameover
+  holds it full; `POST /api/mode {"mode":"scoreboard"}` turns any board into a
+  dedicated wall scoreboard (ignores IR + activate; host excludes it from the
+  chase pool via the new `Participant.Mode`).
+- **Host `ChaseMode`**: `start chase <dur and/or --first N> [--min 2s]
+  [--max 5s] [--gap 1s] [--penalty N] [--dark]`; random pick (no immediate
+  repeat at ≥3 boards), penalty floored at 0, slack fallback (window +1.5 s)
+  for lost timeout EVTs, offline-target advance. `GameService` pushes
+  `CTL score` on change + 1 s refresh (all modes — dm can use wall
+  scoreboards too).
+- **Bench-VERIFIED live on boards 3+4**: activate/spin → timeout → gap →
+  next-target loop, scored hit → `GAME OVER — winner: team 3`, duration end.
+  Known quirks for next session: 3× CTL repeat = triple `EVT state` lines
+  (cosmetic); REST `{"cmd":"hit"}` bypasses chase routing (damages hp and
+  bounces a dormant board via flash→rainbow until re-activated) — the
+  firmware **dormant-penalty IR path is still unexercised on hardware**
+  (needs a real gun or aligned IR TX); on-matrix scoreboard rendering needs
+  eyeball confirmation.
+- **Also this session (before the overnight run):** boards 2–4 flashed +
+  provisioned (see Hardware fleet below); **hostname-from-NVS boot fix**
+  (`9632b44`) so multiple boards co-exist on mDNS/OTA — board 1 briefly
+  auto-renamed to `lasertag-matrix-2.local` during the conflict window, fixed
+  by reflash+reboot; **Android controller exploration**
+  `docs/android-controller-options.md` (recommendation: MAUI app that IS the
+  host, reusing LaserTag.Game/Client; `maui-android` workload already
+  installed; gotcha: Android needs a `MulticastLock` to receive broadcast
+  UDP). A **vibration motor** was considered and parked: not for this
+  pin-constrained carrier — future wearable-target board, driven by the same
+  cue abstraction as sound (spec §5 table).
+
 ### PCB ORDERED (2026-07-12) — carrier rev1
 **10× lasertag-carrier rev1 (100×80mm) ordered from PCBWay:**
 https://member.pcbway.com/Order/GroupDetail?GroupId=1768070 *(temporary
@@ -39,10 +84,10 @@ execution ledger `.superpowers/sdd/progress.md` (gitignored).
 - **CTL grammar v2** in `LaserTag.Client`: `countdown n=`, `gameover winner=`,
   `activate`/`deactivate`, optional `id=` on every verb; `ParseControl`;
   `UdpControlSender` (subnet broadcast, 3× repeat ~20 ms).
-- **⚠ Multi-device caveat (documented in README/spec):** current firmware
-  ignores unknown CTL keys, so `id=`-addressed reset/start is applied by EVERY
-  device. Single-target bench play fine; multi-device DM/Elim needs the
-  **Spec B firmware id= filter first** (Spec B's first item).
+- **✅ Multi-device caveat RESOLVED (2026-07-27):** firmware now enforces the
+  CTL `id=` filter (chase-mode spec/plan). Boards on OLDER firmware still
+  apply addressed CTLs globally — reflash every board before multi-device
+  matches (fleet table below tracks who has it).
 - **Damage multiplier (firmware, NEEDS S3 REFLASH):** global
   `damageMultiplier` 1–32 (presets 1/2/4/8/16 + custom) + per-SHOOTER-team
   `teamDamageMult` handicap (0 = inherit). `mult` serial verb; REST PATCH;
@@ -109,10 +154,28 @@ Layers complete and on `main`:
    top-down as health drops (outer columns stay rainbow). Row-major pixel mapping
    confirmed correct on hardware.
 
-**Tests:** native 51 (test_board 11 + test_controlproto 32 + test_storage 8); .NET 134;
+**Tests:** native 57 (test_board 11 + test_controlproto 38 + test_storage 8);
+.NET 153 (Client 98 + Game 55);
 all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
 
-## Hardware (both live on HAL firmware, both OTA-flashable)
+## Hardware (all live on HAL firmware, OTA-flashable)
+
+### S3-Matrix fleet (4 boards, 2026-07-27) — hostnames persisted in NVS
+| # | Hostname (mDNS .local) | Last IP | deviceId | Chase fw (`edfc007`)? |
+|---|---|---|---|---|
+| 1 | `lasertag-matrix` | .34 | `752b38` | **NO — reflash when powered** |
+| 2 | `lasertag-matrix2` | .180 | `eb278c` | **NO — reflash when powered** |
+| 3 | `lasertag-matrix3` | .225 | `eb20f8` | ✅ OTA'd |
+| 4 | `lasertag-matrix4` | .218 | `e45614` | ✅ OTA'd |
+
+Boards 1+2 are healthy but **unpowered** (not enough power leads); the moment
+they're powered, OTA them (`espota -i <ip> -I <pc-ip>`) — until then they're on
+pre-`id=`-filter firmware and MUST NOT join multi-device matches. WiFi
+provisioning for a fresh board: `tools/set-wifi.ps1 -Port COMx` (creds
+extractable via `netsh wlan show profile ... key=clear`); hostname via
+`PATCH /api/config {"hostname":...}` + reboot (boot reads it from NVS since
+`9632b44`). All roam on DHCP — reservations would end the stale-OTA-IP chore.
+
 - **ESP32-S3-Matrix** (target): WiFi roams via DHCP (seen .24 → .28 → **.33**);
   **mDNS `lasertag-matrix.local` NOW resolves on this Windows host** — use it
   instead of chasing the IP (this contradicts the older platformio.ini/README
@@ -296,7 +359,19 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
 - WiFi 2.4GHz `CommunityFibre10Gb_28750`; creds in NVS (survive OTA). Set via
   `tools/set-wifi.ps1 -Port COMx -Ssid ... -Password ...`.
 
-## Recent Changes (this session, 2026-07-12/13 — all committed, tree clean)
+## Recent Changes (this session, 2026-07-26/27 — all committed, tree clean)
+- `9632b44` hostname-from-NVS boot (multi-board mDNS/OTA); OTA IP → .34;
+  Android options doc. Boards 2/3/4 flashed + provisioned (COM7/8/9,
+  VID 303A:1001); board 1 verified then unpowered.
+- `a252cb7` chase spec; `77e8438` chase plan.
+- `ab2d72d`/`2c3a105` ControlProto CTL v2.1 + scoreGrid (native 51→57).
+- `fff20e6`/`a7d202f` firmware cues + chase state machine; `edfc007` signed
+  elapsed-time review fix (future `lastAnimMs` wrapped unsigned compares).
+- `2a6b1b8` host client verbs (+8 tests); `fedc2de` ChaseMode (+12);
+  `fddadb4` REPL `start chase` + score pusher + docs (.NET 134→153).
+- Bench: chase loop verified live on boards 3+4 (see Current State quirks).
+
+## Recent Changes (2026-07-12/13 — all committed, tree clean)
 - `dotnet/LaserTag.Game/` + `dotnet/LaserTag.Game.Tests/` — NEW: MatchEngine,
   DeathmatchMode, EliminationMode, DurationParser, IGameMode/MatchContext/
   state types (43 tests).
@@ -321,13 +396,16 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   (+post-impl notes), `docs/superpowers/plans/2026-07-12-game-manager.md`.
 
 ## Next Steps
-**Immediately actionable:** (a) **flash the S3** (OTA to current IP or USB
-COM6) to pick up the damage multiplier, then bench-test `mult 8` +
-`fire 2 2`; (b) audition the quack: copy `assets/sfx/quack-attack-3s.wav` to
-a card as `/sfx/test.wav`, `sdplay`; (c) start **Spec B** (firmware pass —
-brainstorm → spec → plan; FIRST item = the CTL `id=` filter, then
-countdown/gameover cues, activate/deactivate, OLED-health; fold in 8b's
-configurable sound paths if scoping allows).
+**Immediately actionable:** (a) **power + OTA boards 1+2** (fleet table above)
+so the whole fleet enforces `id=`; (b) **eyeball the chase visuals** on boards
+3+4 — spin colour, dim scoreboard, countdown blink, gameover hold (host-side
+logic is bench-verified; the LEDs aren't); (c) **exercise the dormant-penalty
+IR path** with a real gun or an IR-TX-equipped board firing at a dormant one;
+(d) audition the quack (`assets/sfx/quack-attack-3s.wav` → card as
+`/sfx/test.wav`, `sdplay`); (e) if the phone controller is wanted next, start
+from `docs/android-controller-options.md` milestone 1 (MAUI Devices screen +
+MulticastLock UDP listener). Remaining Spec B leftovers: OLED-shows-health +
+configurable sound paths (8b); Spec C leftover: retaliation mode (#5).
 
 0. **When PCBWay boards arrive (order: 10× rev1, link at top):** visually check
    against `board-front.svg` / `board-render-rev1.png`; buy/gather parts per
