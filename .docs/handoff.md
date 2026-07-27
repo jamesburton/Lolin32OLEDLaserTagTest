@@ -8,6 +8,31 @@ Codes & features behind interfaces so other guns/protocols and boards plug in.
 
 ## Current State
 
+### Fleet OTA over HTTP SHIPPED (2026-07-27) — fw 2.1.0
+Spec: `docs/superpowers/specs/2026-07-27-fleet-ota-design.md` (commits
+`1819524`, `d571cb5`, `e071754`).
+- **Version discipline starts now:** `LT_FW_VERSION` (matrix_main) = `2.1.0`;
+  BUMP ON EVERY behavioural firmware change. The image embeds an
+  `LTFW:<semver>` marker so tooling reads a .bin's version without flashing
+  it (`FirmwareImage.TryReadVersion`; app-descriptor rejected — the
+  precompiled Arduino core owns it).
+- **Device:** `POST /api/update` (multipart — WebServer's upload machinery
+  requires it, NOT octet-stream) → Update.h verified flash → reply → reboot;
+  failed uploads leave firmware untouched. `GET /update` = browser upload
+  form. LAN-trusted, no auth.
+- **Host:** `fw [bin]` (roster running-vs-available table) and
+  `ota <id|all> [--force] [bin]` (sequential HTTP pushes; `all` = outdated
+  only). `FirmwareImage`/`FirmwareUpdater` live in **LaserTag.Client** so the
+  Android app reuses them. .NET tests now **165** (Client 110 + Game 55).
+- **Proven live:** boards 3+4 espota'd to 2.1.0 (their last-ever espota),
+  then `ota eb20f8 --force` re-flashed board 3 fully over HTTP (upload →
+  flash → reboot → HB `fw=2.1.0`). Boards 1+2 (unpowered) need one espota
+  flash to gain the endpoint; after that everything is `ota all`.
+- Gotchas hit: a ternary between two interpolated strings defeats
+  `MarkupLineInterpolated`'s FormattableString overload (CS1503, fixed
+  `e071754`); board 3's WiFi power-save makes unicast ping/REST lag while
+  broadcast HBs flow — HB is the authoritative liveness signal.
+
 ### Chase mode + CTL v2.1 firmware pass SHIPPED; 4-board fleet (2026-07-26/27, overnight run)
 **Spec B's core is DELIVERED and the first new game mode is live.** Spec:
 `docs/superpowers/specs/2026-07-27-chase-mode-design.md`; plan:
@@ -155,18 +180,18 @@ Layers complete and on `main`:
    confirmed correct on hardware.
 
 **Tests:** native 57 (test_board 11 + test_controlproto 38 + test_storage 8);
-.NET 153 (Client 98 + Game 55);
+.NET 165 (Client 110 + Game 55);
 all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
 
 ## Hardware (all live on HAL firmware, OTA-flashable)
 
 ### S3-Matrix fleet (4 boards, 2026-07-27) — hostnames persisted in NVS
-| # | Hostname (mDNS .local) | Last IP | deviceId | Chase fw (`edfc007`)? |
+| # | Hostname (mDNS .local) | Last IP | deviceId | Firmware |
 |---|---|---|---|---|
-| 1 | `lasertag-matrix` | .34 | `752b38` | **NO — reflash when powered** |
-| 2 | `lasertag-matrix2` | .180 | `eb278c` | **NO — reflash when powered** |
-| 3 | `lasertag-matrix3` | .225 | `eb20f8` | ✅ OTA'd |
-| 4 | `lasertag-matrix4` | .218 | `e45614` | ✅ OTA'd |
+| 1 | `lasertag-matrix` | .34 | `752b38` | **2.0.0-era — espota once when powered, then HTTP** |
+| 2 | `lasertag-matrix2` | .180 | `eb278c` | **2.0.0-era — espota once when powered, then HTTP** |
+| 3 | `lasertag-matrix3` | .225 | `eb20f8` | ✅ 2.1.0 (chase + /api/update; HTTP-OTA proven) |
+| 4 | `lasertag-matrix4` | .218 | `e45614` | ✅ 2.1.0 (chase + /api/update) |
 
 Boards 1+2 are healthy but **unpowered** (not enough power leads); the moment
 they're powered, OTA them (`espota -i <ip> -I <pc-ip>`) — until then they're on
