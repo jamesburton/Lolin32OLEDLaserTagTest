@@ -159,7 +159,8 @@ void test_serialize_config_golden() {
       "\"teamColours\":{\"1\":\"#0000FF\",\"2\":\"#FF0000\",\"3\":\"#00FF00\","
       "\"4\":\"#FFFFFF\"},\"teamSfx\":{\"1\":0,\"2\":2,\"3\":3,\"4\":5},"
       "\"deathSfx\":6,\"startHp\":32,\"damageMultiplier\":1,"
-      "\"teamDamageMult\":{\"1\":0,\"2\":0,\"3\":0,\"4\":0}}",
+      "\"teamDamageMult\":{\"1\":0,\"2\":0,\"3\":0,\"4\":0},"
+      "\"chaseColour\":\"#FFA500\"}",
       buf);
 }
 
@@ -414,6 +415,103 @@ void test_hit_event_from_tag_event() {
       buf);
 }
 
+// --- v2.1: id= filter, countdown/gameover/activate/deactivate --------------
+
+void test_parse_control_id_filter_and_new_verbs() {
+  Control c;
+  // id= captured on any verb.
+  TEST_ASSERT_TRUE(parseControl("CTL reset hp=0 id=eb20f8", c));
+  TEST_ASSERT_TRUE(c.hasId);
+  TEST_ASSERT_EQUAL_STRING("eb20f8", c.id);
+  TEST_ASSERT_TRUE(c.hasHp);
+  TEST_ASSERT_EQUAL_INT(0, c.hp);
+  // No id= -> hasId false (broadcast).
+  TEST_ASSERT_TRUE(parseControl("CTL start", c));
+  TEST_ASSERT_FALSE(c.hasId);
+  // countdown / gameover.
+  TEST_ASSERT_TRUE(parseControl("CTL countdown n=5", c));
+  TEST_ASSERT_EQUAL_INT((int)ControlKind::Countdown, (int)c.kind);
+  TEST_ASSERT_TRUE(c.hasN);
+  TEST_ASSERT_EQUAL_INT(5, c.n);
+  TEST_ASSERT_TRUE(parseControl("CTL gameover winner=2", c));
+  TEST_ASSERT_EQUAL_INT((int)ControlKind::GameOver, (int)c.kind);
+  TEST_ASSERT_TRUE(c.hasWinner);
+  TEST_ASSERT_EQUAL_INT(2, c.winner);
+  // activate with window + id last.
+  TEST_ASSERT_TRUE(parseControl("CTL activate t=3200 id=752b38", c));
+  TEST_ASSERT_EQUAL_INT((int)ControlKind::Activate, (int)c.kind);
+  TEST_ASSERT_TRUE(c.hasT);
+  TEST_ASSERT_EQUAL_UINT32(3200, c.t);
+  TEST_ASSERT_EQUAL_STRING("752b38", c.id);
+  TEST_ASSERT_TRUE(parseControl("CTL activate", c));
+  TEST_ASSERT_FALSE(c.hasT);
+  TEST_ASSERT_TRUE(parseControl("CTL deactivate", c));
+  TEST_ASSERT_EQUAL_INT((int)ControlKind::Deactivate, (int)c.kind);
+}
+
+void test_parse_control_chase_and_score() {
+  Control c;
+  TEST_ASSERT_TRUE(parseControl("CTL chase on penalty=1 display=dark", c));
+  TEST_ASSERT_EQUAL_INT((int)ControlKind::ChaseOn, (int)c.kind);
+  TEST_ASSERT_EQUAL_INT(1, c.penalty);
+  TEST_ASSERT_FALSE(c.displayScore);
+  TEST_ASSERT_TRUE(parseControl("CTL chase on penalty=0 display=score", c));
+  TEST_ASSERT_EQUAL_INT(0, c.penalty);
+  TEST_ASSERT_TRUE(c.displayScore);
+  // Defaults when keys omitted: penalty 0, display score.
+  TEST_ASSERT_TRUE(parseControl("CTL chase on", c));
+  TEST_ASSERT_EQUAL_INT(0, c.penalty);
+  TEST_ASSERT_TRUE(c.displayScore);
+  TEST_ASSERT_TRUE(parseControl("CTL chase off", c));
+  TEST_ASSERT_EQUAL_INT((int)ControlKind::ChaseOff, (int)c.kind);
+  // Unknown chase subtype drops.
+  TEST_ASSERT_FALSE(parseControl("CTL chase wat", c));
+  // score with all four teams.
+  TEST_ASSERT_TRUE(parseControl("CTL score 1=4 2=0 3=12 4=7", c));
+  TEST_ASSERT_EQUAL_INT((int)ControlKind::Score, (int)c.kind);
+  TEST_ASSERT_TRUE(c.hasScores);
+  TEST_ASSERT_EQUAL_INT(4, c.scores[0]);
+  TEST_ASSERT_EQUAL_INT(0, c.scores[1]);
+  TEST_ASSERT_EQUAL_INT(12, c.scores[2]);
+  TEST_ASSERT_EQUAL_INT(7, c.scores[3]);
+  // Missing team keys default to 0.
+  TEST_ASSERT_TRUE(parseControl("CTL score 2=9", c));
+  TEST_ASSERT_EQUAL_INT(0, c.scores[0]);
+  TEST_ASSERT_EQUAL_INT(9, c.scores[1]);
+}
+
+void test_format_dormant_hit_event() {
+  char buf[128];
+  int n = formatDormantHitEvent(buf, sizeof(buf), "eb20f8", 3, 2, "vatos", 32,
+                                1234);
+  TEST_ASSERT_GREATER_THAN(0, n);
+  TEST_ASSERT_EQUAL_STRING(
+      "EVT hit victim=eb20f8 shooterTeam=3 dmg=2 proto=vatos hp=32 ts=1234 "
+      "dormant=1",
+      buf);
+}
+
+void test_config_chase_colour_serialize_patch() {
+  ConfigDoc cfg;
+  strncpy(cfg.deviceId, "a1b2c3", sizeof(cfg.deviceId) - 1);
+  strncpy(cfg.hostname, "lasertag-matrix", sizeof(cfg.hostname) - 1);
+  cfg.ownTeam = 2;
+  cfg.enabledTeams[0] = 1;
+  cfg.enabledTeams[1] = 2;
+  cfg.enabledTeams[2] = 3;
+  cfg.enabledTeams[3] = 4;
+  cfg.enabledTeamsCount = 4;
+  char buf[640];
+  serializeConfig(cfg, buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"chaseColour\":\"#FFA500\""));
+  PatchResult r = applyConfigPatch("{\"chaseColour\":\"#00FFAA\"}", cfg);
+  TEST_ASSERT_TRUE(r.ok);
+  TEST_ASSERT_EQUAL_STRING("#00FFAA", cfg.chaseColour);
+  r = applyConfigPatch("{\"chaseColour\":\"red\"}", cfg);
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL_STRING("#00FFAA", cfg.chaseColour); // unchanged on reject
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_format_heartbeat_golden);
@@ -448,5 +546,9 @@ int main(int, char **) {
   RUN_TEST(test_parse_command_unknown_rejected);
   RUN_TEST(test_tag_event_from_vatos_shot);
   RUN_TEST(test_hit_event_from_tag_event);
+  RUN_TEST(test_parse_control_id_filter_and_new_verbs);
+  RUN_TEST(test_parse_control_chase_and_score);
+  RUN_TEST(test_format_dormant_hit_event);
+  RUN_TEST(test_config_chase_colour_serialize_patch);
   return UNITY_END();
 }

@@ -88,6 +88,24 @@ int formatHitEvent(char *out, size_t outSize, const char *victim,
                    uint32_t ts);
 
 /// <summary>
+/// Formats a dormant-hit-event line (contract §2.2 v2.1): identical to
+/// <see cref="formatHitEvent"/> with a trailing ` dormant=1` token. Emitted
+/// when a chase-mode board is hit while not the active target (no hp change).
+/// </summary>
+/// <param name="out">Destination buffer.</param>
+/// <param name="outSize">Size of the destination buffer.</param>
+/// <param name="victim">deviceId of the hit device.</param>
+/// <param name="shooterTeam">Firing team index.</param>
+/// <param name="dmg">Damage 1..4.</param>
+/// <param name="proto">protocolId that decoded the shot, e.g. "vatos".</param>
+/// <param name="hp">Current (unchanged) health.</param>
+/// <param name="ts">Device millis() timestamp.</param>
+/// <returns>Number of characters written (excluding the NUL), or -1 on error.</returns>
+int formatDormantHitEvent(char *out, size_t outSize, const char *victim,
+                          int shooterTeam, int dmg, const char *proto, int hp,
+                          uint32_t ts);
+
+/// <summary>
 /// Formats a state-event line (contract §1.4):
 /// `EVT state s=&lt;ready|idle|dead|respawn&gt; [hp=&lt;int&gt;] ts=&lt;ms&gt;`.
 /// The optional `hp=` token is emitted only when <paramref name="hp"/> is &gt;= 0
@@ -104,17 +122,25 @@ int formatStateEvent(char *out, size_t outSize, const char *state, int hp,
 
 // --- §1 inbound CTL parser --------------------------------------------------
 
-/// <summary>Kind of an inbound control message (contract §1.2 / §1.4).</summary>
+/// <summary>Kind of an inbound control message (contract §1.2 / §1.4, v2.1).</summary>
 enum class ControlKind {
-  None,  ///< not a CTL line / unparseable (drop)
-  Start, ///< `CTL start [ts=<ms>]`
-  Stop,  ///< `CTL stop`
-  Reset, ///< `CTL reset [hp=<int>]`
+  None,       ///< not a CTL line / unparseable (drop)
+  Start,      ///< `CTL start [ts=<ms>]`
+  Stop,       ///< `CTL stop`
+  Reset,      ///< `CTL reset [hp=<int>]`
+  Countdown,  ///< `CTL countdown n=<sec>`
+  GameOver,   ///< `CTL gameover winner=<team|0>`
+  Activate,   ///< `CTL activate [t=<ms>]` — become the chase target
+  Deactivate, ///< `CTL deactivate`
+  ChaseOn,    ///< `CTL chase on penalty=<0|1> display=<score|dark>`
+  ChaseOff,   ///< `CTL chase off`
+  Score,      ///< `CTL score 1=<n> 2=<n> 3=<n> 4=<n>`
 };
 
 /// <summary>
 /// Parsed inbound control message. Optional fields use a `has*` flag because
-/// `ts`/`hp` are optional in the grammar.
+/// most keys are optional in the grammar. `id=` (device addressing filter) is
+/// accepted on every verb.
 /// </summary>
 struct Control {
   ControlKind kind = ControlKind::None;
@@ -122,6 +148,18 @@ struct Control {
   uint32_t ts = 0;
   bool hasHp = false;
   int hp = 0;
+  bool hasN = false;      ///< countdown seconds present
+  int n = 0;              ///< countdown seconds
+  bool hasWinner = false; ///< gameover winner present
+  int winner = 0;         ///< gameover winner (0 = draw)
+  bool hasT = false;      ///< activate self-timeout window present
+  uint32_t t = 0;         ///< activate self-timeout window ms
+  int penalty = 0;             ///< chase on: penalty feedback flag
+  bool displayScore = true;    ///< chase on: dormant display score|dark
+  bool hasScores = false;      ///< score verb present
+  int scores[4] = {0, 0, 0, 0}; ///< score, teams 1..4
+  bool hasId = false; ///< id= addressing filter present
+  char id[8] = "";    ///< addressing filter target deviceId
 };
 
 /// <summary>
@@ -164,6 +202,7 @@ struct ConfigDoc {
   int damageMultiplier = 1;                    ///< global hit multiplier, 1..32
   int teamDamageMult[TeamColourCount] = {0, 0, 0, 0}; ///< per-SHOOTER-team
       ///< override (handicap), keyed like teamSfx; 0 = inherit the global
+  char chaseColour[8] = "#FFA500"; ///< chase active spin colour
 };
 
 /// <summary>Serializes a ConfigDoc into the contract §2.2 ConfigDoc JSON.</summary>

@@ -1,5 +1,6 @@
 #include "ControlProto.h"
 
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -47,6 +48,37 @@ bool findIntKey(const char *rest, const char *key, long *outVal) {
   return false;
 }
 
+// Scans `key=value` tokens for `key`; copies the value into out (NUL-safe).
+bool findStrKey(const char *rest, const char *key, char *out, size_t outSize) {
+  const size_t keyLen = strlen(key);
+  const char *p = rest;
+  while (*p) {
+    while (*p == ' ' || *p == '\t') p++;
+    if (!*p) break;
+    const char *tokStart = p;
+    while (*p && *p != ' ' && *p != '\t') p++;
+    const size_t tokLen = (size_t)(p - tokStart);
+    if (tokLen > keyLen + 1 && strncmp(tokStart, key, keyLen) == 0 &&
+        tokStart[keyLen] == '=') {
+      size_t valLen = tokLen - keyLen - 1;
+      if (valLen >= outSize) valLen = outSize - 1;
+      memcpy(out, tokStart + keyLen + 1, valLen);
+      out[valLen] = '\0';
+      return true;
+    }
+  }
+  return false;
+}
+
+// Shared optional-key capture applied to every recognised verb.
+void captureCommon(const char *rest, Control &out) {
+  char idBuf[8];
+  if (findStrKey(rest, "id", idBuf, sizeof(idBuf))) {
+    out.hasId = true;
+    memcpy(out.id, idBuf, sizeof(out.id));
+  }
+}
+
 } // namespace
 
 // --- TagEvent ---------------------------------------------------------------
@@ -78,6 +110,17 @@ int formatHitEvent(char *out, size_t outSize, const char *victim,
       out, outSize,
       "EVT hit victim=%s shooterTeam=%d dmg=%d proto=%s hp=%d ts=%lu", victim,
       shooterTeam, dmg, proto, hp, (unsigned long)ts);
+}
+
+int formatDormantHitEvent(char *out, size_t outSize, const char *victim,
+                          int shooterTeam, int dmg, const char *proto, int hp,
+                          uint32_t ts) {
+  const int n = formatHitEvent(out, outSize, victim, shooterTeam, dmg, proto,
+                               hp, ts);
+  if (n < 0) return n;
+  const int m = snprintf(out + n, outSize > (size_t)n ? outSize - n : 0,
+                         " dormant=1");
+  return m < 0 ? m : n + m;
 }
 
 int formatStateEvent(char *out, size_t outSize, const char *state, int hp,
@@ -114,10 +157,12 @@ bool parseControl(const char *line, Control &out) {
       out.hasTs = true;
       out.ts = (uint32_t)v;
     }
+    captureCommon(rest, out);
     return true;
   }
   if (startsWith(rest, "stop", nullptr)) {
     out.kind = ControlKind::Stop;
+    captureCommon(rest, out);
     return true;
   }
   if (startsWith(rest, "reset", nullptr)) {
@@ -126,9 +171,72 @@ bool parseControl(const char *line, Control &out) {
       out.hasHp = true;
       out.hp = (int)v;
     }
+    captureCommon(rest, out);
     return true;
   }
-  // "CTL wat ..." — recognised class, unknown subtype: drop.
+  if (startsWith(rest, "countdown", nullptr)) {
+    out.kind = ControlKind::Countdown;
+    if (findIntKey(rest, "n", &v)) {
+      out.hasN = true;
+      out.n = (int)v;
+    }
+    captureCommon(rest, out);
+    return true;
+  }
+  if (startsWith(rest, "gameover", nullptr)) {
+    out.kind = ControlKind::GameOver;
+    if (findIntKey(rest, "winner", &v)) {
+      out.hasWinner = true;
+      out.winner = (int)v;
+    }
+    captureCommon(rest, out);
+    return true;
+  }
+  // "deactivate" is checked before "activate": it is not a prefix of it, but
+  // keeping the longer verb first keeps this block's ordering intuitive.
+  if (startsWith(rest, "deactivate", nullptr)) {
+    out.kind = ControlKind::Deactivate;
+    captureCommon(rest, out);
+    return true;
+  }
+  if (startsWith(rest, "activate", nullptr)) {
+    out.kind = ControlKind::Activate;
+    if (findIntKey(rest, "t", &v) && v > 0) {
+      out.hasT = true;
+      out.t = (uint32_t)v;
+    }
+    captureCommon(rest, out);
+    return true;
+  }
+  if (startsWith(rest, "chase on", nullptr)) {
+    out.kind = ControlKind::ChaseOn;
+    if (findIntKey(rest, "penalty", &v)) {
+      out.penalty = (int)v;
+    }
+    char disp[8] = "";
+    if (findStrKey(rest, "display", disp, sizeof(disp))) {
+      out.displayScore = strcmp(disp, "dark") != 0;
+    }
+    captureCommon(rest, out);
+    return true;
+  }
+  if (startsWith(rest, "chase off", nullptr)) {
+    out.kind = ControlKind::ChaseOff;
+    captureCommon(rest, out);
+    return true;
+  }
+  if (startsWith(rest, "score", nullptr)) {
+    out.kind = ControlKind::Score;
+    out.hasScores = true;
+    static const char *teamKeys[4] = {"1", "2", "3", "4"};
+    for (int i = 0; i < 4; i++) {
+      out.scores[i] = findIntKey(rest, teamKeys[i], &v) ? (int)v : 0;
+    }
+    captureCommon(rest, out);
+    return true;
+  }
+  // "CTL wat ..." — recognised class, unknown subtype: drop. This also
+  // catches an unrecognised "chase <subtype>" (e.g. "chase wat").
   out = Control{};
   return false;
 }
@@ -171,6 +279,7 @@ size_t serializeConfig(const ConfigDoc &cfg, char *out, size_t outSize) {
     snprintf(key, sizeof(key), "%d", cfg.teamIndex[i]);
     dmg[key] = cfg.teamDamageMult[i];
   }
+  doc["chaseColour"] = cfg.chaseColour;
   return serializeJson(doc, out, outSize);
 }
 
@@ -280,6 +389,22 @@ PatchResult applyConfigPatch(const char *json, ConfigDoc &cfg) {
           }
         }
       }
+    } else if (strcmp(key, "chaseColour") == 0) {
+      if (!kv.value().is<const char *>()) {
+        snprintf(res.error, sizeof(res.error), "bad type: chaseColour");
+        return res;
+      }
+      const char *val = kv.value().as<const char *>();
+      bool validHex = strlen(val) == 7 && val[0] == '#';
+      for (size_t i = 1; validHex && i < 7; i++) {
+        validHex = isxdigit(static_cast<unsigned char>(val[i])) != 0;
+      }
+      if (!validHex) {
+        snprintf(res.error, sizeof(res.error), "chaseColour must be #RRGGBB");
+        return res;
+      }
+      strncpy(staged.chaseColour, val, sizeof(staged.chaseColour) - 1);
+      staged.chaseColour[sizeof(staged.chaseColour) - 1] = '\0';
     } else {
       // Unknown field → reject the whole patch (HTTP 400), cfg unchanged.
       snprintf(res.error, sizeof(res.error), "unknown field: %s", key);
