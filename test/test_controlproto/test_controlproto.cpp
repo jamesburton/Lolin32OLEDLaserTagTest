@@ -512,6 +512,70 @@ void test_config_chase_colour_serialize_patch() {
   TEST_ASSERT_EQUAL_STRING("#00FFAA", cfg.chaseColour); // unchanged on reject
 }
 
+// --- §3.1 scoreGrid layout renderer ------------------------------------------
+
+void grid_expect(const uint8_t grid[64], int x, int y, uint8_t v) {
+  TEST_ASSERT_EQUAL_UINT8(v, grid[y * 8 + x]);
+}
+
+void test_score_grid_two_team_middle_out() {
+  const int teams[2] = {1, 2};
+  int scores[4] = {0, 0, 0, 0};
+  uint8_t grid[64];
+  // Zero score: fully blank.
+  scoreGrid(scores, teams, 2, grid);
+  for (int i = 0; i < 64; i++) TEST_ASSERT_EQUAL_UINT8(0, grid[i]);
+  // Team 1: first point at column 3 (middle-left), bottom row (y=7).
+  scores[0] = 1;
+  scoreGrid(scores, teams, 2, grid);
+  grid_expect(grid, 3, 7, 1);
+  grid_expect(grid, 3, 6, 0);
+  // 9 points: column 3 full (8) + 1 into column 2, bottom first.
+  scores[0] = 9;
+  scoreGrid(scores, teams, 2, grid);
+  for (int y = 0; y < 8; y++) grid_expect(grid, 3, y, 1);
+  grid_expect(grid, 2, 7, 1);
+  grid_expect(grid, 2, 6, 0);
+  // Team 2 mirrors: first point column 4 bottom.
+  scores[1] = 1;
+  scoreGrid(scores, teams, 2, grid);
+  grid_expect(grid, 4, 7, 2);
+  // Saturation: 40 points clamps to the 32-cell half.
+  scores[0] = 40;
+  scoreGrid(scores, teams, 2, grid);
+  for (int x = 0; x <= 3; x++)
+    for (int y = 0; y < 8; y++) grid_expect(grid, x, y, 1);
+  // Negative clamps to 0 (blank).
+  scores[1] = -3;
+  scoreGrid(scores, teams, 2, grid);
+  grid_expect(grid, 4, 7, 0);
+}
+
+void test_score_grid_quadrants() {
+  const int teams[4] = {1, 2, 3, 4};
+  int scores[4] = {1, 1, 1, 1};
+  uint8_t grid[64];
+  scoreGrid(scores, teams, 4, grid);
+  // First point of each team sits at its quadrant's centre-most cell.
+  grid_expect(grid, 3, 3, 1); // team 1 TL
+  grid_expect(grid, 4, 3, 2); // team 2 TR
+  grid_expect(grid, 3, 4, 3); // team 3 BL
+  grid_expect(grid, 4, 4, 4); // team 4 BR
+  // Fill order within TL: column x=3 upward (y=3,2,1,0), then x=2...
+  scores[0] = 5;
+  scoreGrid(scores, teams, 4, grid);
+  grid_expect(grid, 3, 2, 1);
+  grid_expect(grid, 3, 1, 1);
+  grid_expect(grid, 3, 0, 1);
+  grid_expect(grid, 2, 3, 1);
+  grid_expect(grid, 2, 2, 0);
+  // Saturation at 16.
+  scores[3] = 99;
+  scoreGrid(scores, teams, 4, grid);
+  for (int x = 4; x < 8; x++)
+    for (int y = 4; y < 8; y++) grid_expect(grid, x, y, 4);
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_format_heartbeat_golden);
@@ -550,5 +614,7 @@ int main(int, char **) {
   RUN_TEST(test_parse_control_chase_and_score);
   RUN_TEST(test_format_dormant_hit_event);
   RUN_TEST(test_config_chase_colour_serialize_patch);
+  RUN_TEST(test_score_grid_two_team_middle_out);
+  RUN_TEST(test_score_grid_quadrants);
   return UNITY_END();
 }

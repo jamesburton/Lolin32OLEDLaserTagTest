@@ -241,6 +241,49 @@ bool parseControl(const char *line, Control &out) {
   return false;
 }
 
+// --- Chase-mode scoreboard layout ---------------------------------------------
+
+void scoreGrid(const int scores[4], const int *enabledTeams,
+               size_t enabledCount, uint8_t grid[64]) {
+  memset(grid, 0, 64);
+  auto clampScore = [](int s, int cap) {
+    if (s < 0) return 0;
+    return s > cap ? cap : s;
+  };
+  if (enabledCount == 2) {
+    // Middle-out halves: enabledTeams[0] columns 3..0, [1] columns 4..7;
+    // each column fills bottom (y=7) to top, 1 LED = 1 point, cap 32.
+    for (int side = 0; side < 2; side++) {
+      const int team = enabledTeams[side];
+      if (team < 1 || team > 4) continue;
+      int remaining = clampScore(scores[team - 1], 32);
+      for (int step = 0; step < 4 && remaining > 0; step++) {
+        const int x = side == 0 ? 3 - step : 4 + step;
+        for (int y = 7; y >= 0 && remaining > 0; y--, remaining--) {
+          grid[y * 8 + x] = (uint8_t)team;
+        }
+      }
+    }
+    return;
+  }
+  // Quadrants by team VALUE: 1 TL, 2 TR, 3 BL, 4 BR; fill from the panel
+  // centre outward (centre-most column first, centre-most row first), cap 16.
+  for (size_t i = 0; i < enabledCount && i < 4; i++) {
+    const int team = enabledTeams[i];
+    if (team < 1 || team > 4) continue;
+    const bool right = team == 2 || team == 4;
+    const bool bottom = team == 3 || team == 4;
+    int remaining = clampScore(scores[team - 1], 16);
+    for (int cs = 0; cs < 4 && remaining > 0; cs++) {   // column step from centre
+      const int x = right ? 4 + cs : 3 - cs;
+      for (int rs = 0; rs < 4 && remaining > 0; rs++, remaining--) { // row step
+        const int y = bottom ? 4 + rs : 3 - rs;
+        grid[y * 8 + x] = (uint8_t)team;
+      }
+    }
+  }
+}
+
 // --- Config JSON -------------------------------------------------------------
 
 size_t serializeConfig(const ConfigDoc &cfg, char *out, size_t outSize) {

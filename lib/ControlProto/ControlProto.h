@@ -175,6 +175,33 @@ struct Control {
 /// <returns>True if a valid CTL line was parsed (out.kind != None).</returns>
 bool parseControl(const char *line, Control &out);
 
+// --- §3.1 Chase-mode scoreboard layout ---------------------------------------
+
+/// <summary>
+/// Renders team scores into an 8x8 team-index grid (design spec §3.1):
+/// <list type="bullet">
+/// <item>2 enabled teams: vertical middle-out split. <paramref
+/// name="enabledTeams"/>[0] fills columns 3..0, [1] fills columns 4..7; each
+/// column fills bottom (y=7) upward, 1 LED = 1 point, saturating at 32.</item>
+/// <item>3-4 enabled teams: 4x4 quadrants keyed by team VALUE (1 top-left,
+/// 2 top-right, 3 bottom-left, 4 bottom-right), each filling from the panel
+/// centre outward, 1 LED = 1 point, saturating at 16.</item>
+/// </list>
+/// Negative scores clamp to 0 (blank). Cell values are the team's VALUE
+/// (1..4), not an index into <paramref name="enabledTeams"/>; 0 means off.
+/// </summary>
+/// <param name="scores">Team scores indexed by team value - 1 (scores[0] is
+/// team 1's score, etc.).</param>
+/// <param name="enabledTeams">The enabled team values, e.g. {1, 2} or
+/// {1, 2, 3, 4}.</param>
+/// <param name="enabledCount">Number of valid entries in
+/// <paramref name="enabledTeams"/> (2 selects the middle-out layout, anything
+/// else the quadrant layout).</param>
+/// <param name="grid">Destination 64-cell grid, row-major `y*8+x`; fully
+/// overwritten (0 = off, else team value 1..4).</param>
+void scoreGrid(const int scores[4], const int *enabledTeams,
+               size_t enabledCount, uint8_t grid[64]);
+
 // --- §2.2 REST JSON config ---------------------------------------------------
 
 /// Number of distinct team colours carried in a ConfigDoc (Vatos: 1..4).
