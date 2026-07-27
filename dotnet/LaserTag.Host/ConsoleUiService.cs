@@ -242,9 +242,14 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
                 .UploadAsync(e.LastHeartbeat.Ip, bin, CancellationToken.None)
                 .GetAwaiter()
                 .GetResult();
-            AnsiConsole.MarkupLineInterpolated(r.Ok
-                ? $"  [green]{e.Id} OK[/] — rebooting into the new image"
-                : $"  [red]{e.Id} FAILED[/]: {r.Error} (pre-2.1.0 firmware has no /api/update — flash once via espota)");
+            if (r.Ok)
+            {
+                AnsiConsole.MarkupLineInterpolated($"  [green]{e.Id} OK[/] — rebooting into the new image");
+            }
+            else
+            {
+                AnsiConsole.MarkupLineInterpolated($"  [red]{e.Id} FAILED[/]: {r.Error} (pre-2.1.0 firmware has no /api/update — flash once via espota)");
+            }
         }
     }
 
