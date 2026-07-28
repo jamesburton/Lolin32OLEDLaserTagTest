@@ -8,6 +8,47 @@ Codes & features behind interfaces so other guns/protocols and boards plug in.
 
 ## Current State
 
+### Web + Android managers SHIPPED (2026-07-28) — one UI, one engine, two shells
+Spec: `docs/superpowers/specs/2026-07-28-managers-design.md`. Supersedes
+`docs/android-controller-options.md` (both its Option B and Option C are built).
+- **Architecture:** screens live ONCE in `LaserTag.Ui` (Blazor + `IGameSession`);
+  the engine lives ONCE in `LaserTag.Runtime` (`GameService`, UDP listener, 4 Hz
+  tick — extracted from `LaserTag.Host`, which still works unchanged). The two
+  shells differ only in which machine runs the engine.
+- **`LaserTag.Web`** — `dotnet run --project dotnet/LaserTag.Web` → binds
+  `0.0.0.0:5080`, plain HTTP (a self-signed cert on a LAN IP just nags phones).
+  Screens: Devices / Match / Live / Firmware. JSON API for scripting:
+  `GET /api/devices`, `GET /api/match`, `POST /api/match/start|stop`,
+  `POST /api/control`. **Verified live** by sending fake heartbeats to UDP 4210:
+  roster populated, deathmatch started, simulated hit scored team 1 and dropped
+  the victim to hp 30.
+- **`LaserTag.App`** — MAUI Blazor Hybrid, `net10.0-android` only, phone-as-host
+  (no PC at play time). `dotnet publish dotnet/LaserTag.App -f net10.0-android
+  -c Release -p:AndroidPackageFormat=apk` → signed 29 MB APK.
+  **BUILD-VERIFIED ONLY — no device/emulator was available, so its UDP receive
+  path has never actually run.** First on-device launch is the real test.
+- **Two Android traps handled** (both fail as a silently empty roster, never an
+  error): Android drops inbound broadcast UDP without a
+  `WifiManager.MulticastLock` (`AndroidMulticastGuard` + manifest
+  `CHANGE_WIFI_MULTICAST_STATE`); and **MAUI builds a service provider but never
+  starts `IHostedService`**, so the listener and tick are started by hand in
+  `App.OnStart`.
+- **Gotchas that cost time:** `maui-android` was NOT installed despite the
+  exploration doc's claim (`dotnet workload install maui-android` fixed it; the
+  install rewrites SDK manifests, so concurrent `dotnet` commands fail while it
+  runs). Blazor components in a razor class library **404 unless BOTH**
+  `Router.AdditionalAssemblies` **and**
+  `MapRazorComponents<App>().AddAdditionalAssemblies(...)` list the assembly —
+  there is a test guarding exactly this. A running `LaserTag.Web` locks its DLLs
+  and breaks later builds; stop it first.
+- **Tests 212** (Client 110, Game 55, Rf 16, **Ui 18**, **Web 13**). Runtime
+  gained `listen:false` after tests showed `SO_REUSEADDR` lets two hosts bind
+  4210 and silently share datagrams.
+- **Next for the managers:** run the APK on a real phone (multicast lock is the
+  thing to prove); consider a foreground service if backgrounding drops hits;
+  the `IGameSession` seam is where a thin client (phone driving a remote host)
+  would slot in without touching a screen.
+
 ### RF (2.4 GHz) sub-project CLOSED — no signal found; these units stay on IR (2026-07-28)
 **Decision: integrate these guns over IR only** (`docs/gun-protocol.md`, already
 working). Do not spend more time hunting RF on this kit unless a labelled or
@@ -472,6 +513,10 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
 ## Next Steps
 **RF is closed** — these guns are IR-only as far as this project is concerned;
 see the RF section above before reopening it.
+
+**Managers:** the highest-value next step is **installing the APK on a real
+phone** — everything else about the Android app is proven except the one thing
+that matters most (receiving broadcasts under the multicast lock).
 
 **Immediately actionable:** (a) **power + OTA boards 1+2** (fleet table above)
 so the whole fleet enforces `id=`; (b) **eyeball the chase visuals** on boards
