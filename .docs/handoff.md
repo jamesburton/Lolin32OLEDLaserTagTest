@@ -8,6 +8,49 @@ Codes & features behind interfaces so other guns/protocols and boards plug in.
 
 ## Current State
 
+### RF (2.4 GHz) sub-project PAUSED — tooling complete, no signal found (2026-07-28)
+Spec: `docs/superpowers/specs/2026-07-28-rf-protocol-analysis-design.md`; plan:
+`docs/superpowers/plans/2026-07-28-rf-protocol-analysis.md`; findings:
+`docs/rf-protocol.md`. Commits `bc33611`, `958abc2`, `d496679`, `befdc4d`,
+`9d72355`, `bd22a21`, plus the analysis library and evidence commits.
+- **Outcome: the Vatos kit was NOT detected on air.** Firing, two guns firing at
+  each other, pairing and power-cycling all produced only WiFi-shaped energy,
+  and **2901 promiscuous captures yielded 0 CRC-valid packets** (2402/2464/2476
+  MHz at 1 M and 2 M, address widths 3-5). That is 3 of 126 channels and 2 of 3
+  rates — not exhaustive, but the tooling is proven, so it is real evidence.
+- **Leading hypothesis: these guns have no radio.** They are the rechargeable
+  gun-only units; the "2.4GHz Data SYNC" claim comes from vendor listings for
+  **vest-bundled** Vatos sets. Unverifiable directly — they are a child's toys
+  in use, cannot be disassembled, have no visible model number, and the
+  packaging is gone. The spec's Phase 0 chip-marking gate is permanently blocked
+  by this route; non-invasive alternatives are listed in `docs/rf-protocol.md`.
+- **Hardware:** nRF24L01+ pulled from an LC Technology `NRF24L01-TTL_V2` adaptor
+  (its own CH340T+MS51FB9AE firmware is a transparent bridge, useless for
+  sniffing) onto an **ESP8266, CP210x on COM6**. Wiring CE=GPIO4 CSN=GPIO5
+  SCK=GPIO14 MOSI=GPIO13 MISO=GPIO12, 3V3 + 10 µF at the module. Env
+  `esp8266-rfprobe`; commands `selftest`, `scan`, `watch`, `dwell`, `sniff`.
+- **`LaserTag.Rf`** (net10.0, 16 xUnit tests green): line parser, nRF24 CRC16,
+  bit realignment, ESB packet validation, address recovery. Raw captures kept in
+  `docs/captures/` for re-analysis. Plan Task 6 (`RfTrainer`) deferred — no
+  confirmed signal to capture.
+- **Product-line evidence backs the no-radio reading:** every Vatos SKU that
+  advertises "2.4GHz Data Sync" ships with vests/receivers; the one confirmed
+  vest-free rechargeable line (VL-BB8933B / B0CZL4NCP3, "No Vests Needed")
+  advertises no RF at all. No standalone Vatos vests are sold, so "buy a vest to
+  give the link a peer" is NOT an available experiment. Manufacturer Canhui
+  holds FCC ID `2A6LV-BB1550F` (2407-2475 MHz, ~1 mW) — **check the unit for an
+  "FCC ID: 2A…" label; that is the only non-invasive proof either way.**
+- **If resumed:** confine sweeps to channels 7-75 (the 2407-2475 MHz grant band)
+  and include **250 kbps**, which was never tested. Two of the three channels
+  sniffed (2402, 2476) were outside the grant band entirely.
+- **Gotcha that cost real time:** the first occupancy metric counted SPI polls,
+  which scales with loop speed rather than airtime, so `watch` and `dwell`
+  disagreed ~100x on the same idle channel and manufactured two false
+  candidates (2446/2407 MHz). Fixed in `9d72355` (fixed 500 µs cadence,
+  `high/samples` percentage). **A candidate found by sweeping is not a finding
+  until dwelling on it reproduces the effect** — a third candidate (2464 MHz,
+  37% vs 3%) died exactly that way.
+
 ### Fleet OTA over HTTP SHIPPED (2026-07-27) — fw 2.1.0
 Spec: `docs/superpowers/specs/2026-07-27-fleet-ota-design.md` (commits
 `1819524`, `d571cb5`, `e071754`).

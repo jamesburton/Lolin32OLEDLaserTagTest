@@ -9,12 +9,83 @@ observations and inference are kept visibly separate.
 
 ## Status
 
+**Paused, pending evidence that the kit has a radio at all.** The tooling is
+finished and proven; the target has not been shown to exist.
+
 | Phase | State |
 | ----- | ----- |
-| 0 — identify the silicon | **Pending** (blocking; see below) |
-| 1 — probe firmware | `selftest` + `scan` done and bench-verified; `sniff` not yet written |
-| 2 — .NET analysis | Not started |
+| 0 — identify the silicon | **Blocked, permanently by this route.** The units are a child's toys in daily use and cannot be disassembled. No model number on the units; packaging not retained. |
+| 1 — probe firmware | Done: `selftest`, `scan`, `watch`, `dwell`, `sniff`, all bench-verified |
+| 2 — .NET analysis | Done: `LaserTag.Rf` (parser, CRC16, realignment, ESB validation, address recovery), 16 xUnit tests green |
 | 3 — document | This file |
+| Remaining plan tasks | `RfTrainer` interactive capture app (plan Task 6) — deferred; there is no confirmed signal to capture |
+
+### The constraint that changes the plan
+
+The spec made Phase 0 — read the 2.4 GHz chip marking — a hard gate before
+trusting any capture work. **That gate cannot be satisfied.** The guns cannot be
+opened, carry no visible model number, and the packaging is gone. Every
+conclusion below therefore rests on measurement alone, with no way to confirm
+what silicon is inside.
+
+This matters because the failure modes are indistinguishable from the outside:
+a kit with no radio, a kit with an XN297/BK2425 radio our hardware cannot decode,
+and a kit whose radio stays silent without a vest all produce exactly the
+observations we recorded.
+
+### Leading hypothesis: these guns have no radio
+
+These are the **rechargeable, gun-only units, sold without vests**. The
+"2.4GHz Data SYNC" claim that motivated this sub-project comes from vendor
+listings for Vatos sets **bundled with LCD-equipped vests** — not from this
+product. If the RF hardware ships only in the vest-bundled variants, then these
+guns have nothing to transmit, and every measurement below is explained at once
+without any of the more exotic explanations.
+
+That would also make this the correct outcome rather than a failure: the
+sub-project's job was to find out whether there is a protocol to reverse
+engineer, and "there is no radio in this variant" is a legitimate answer.
+
+### Product-line evidence (2026-07-28 research)
+
+Across every Vatos SKU found, **"2.4GHz Data Sync" appears only on sets bundled
+with vests or wearable receivers**:
+
+| SKU | Vests/receivers | 2.4 GHz advertised |
+| --- | --------------- | ------------------ |
+| VL-BB8933A (B0C5JGFHSY) | 4 strap-on receivers | Yes |
+| B092W1PMMK, B0CBBLGNRB, B0DZ6JC3VJ, B0FVWYGJ9C | Vests (LCD) | Yes |
+| **VL-BB8933B (B0CZL4NCP3) — "No Vests Needed"** | **None; IR receiver built into each gun** | **No mention anywhere in the listing or vendor page** |
+
+The one confirmed vest-free rechargeable line advertises no RF features at all,
+describing hit detection as infrared receivers plus vibration inside each gun.
+That matches this kit's description and matches everything measured. Treat as
+strong circumstantial evidence, not proof — the unit is unlabelled.
+
+No standalone Vatos vests or third-party compatible vests were found for sale,
+and no documented procedure for retrofitting vests to a gun-only set. So "buy a
+vest to test the link" is **not currently an available experiment**; the vests
+appear only inside complete bundles.
+
+### The one non-invasive check that would settle it
+
+Vatos's manufacturer (Canhui Plastic Toys) holds FCC ID **`2A6LV-BB1550F`**, a
+genuine intentional-radiator grant for a spread-spectrum digital transmission
+system at **2407.0–2475.0 MHz**, ~1 mW. So RF-equipped units in this family do
+exist and are labelled.
+
+**Look on the underside, battery/charge door or grip for an "FCC ID: 2A…" label
+and look it up at fccid.io.** A label proves a radio and names its band; no
+label at all (US-market units must carry one for an intentional radiator) is
+weak-but-real evidence against, though a UK/EU unit may show only CE/UKCA.
+
+### Refinement if work ever resumes
+
+That FCC grant covers **2407–2475 MHz**, and ~1 mW is very low power. Two of the
+three channels sniffed on 2026-07-28 — 2402 and 2476 MHz — fall **outside** that
+range; only 2464 MHz was inside it. Any future sweep should confine itself to
+channels 7–75, include **250 kbps** (untested, and the most likely choice for a
+1 mW link needing range), and be run with the probe within a metre of the unit.
 
 ## Probe hardware (confirmed)
 
@@ -149,32 +220,50 @@ kit-on runs rather than raw occupancy.
 **Not yet done:** the matching kit-ON scan. Run `scan 40` within two metres of a
 powered gun and vest, firing, and diff against the table above.
 
-## Phase 0 — hardware identification (BLOCKING, not yet done)
+## Phase 0 — hardware identification (blocked; non-invasive routes only)
 
-The chipset is **unconfirmed**. nRF24L01 is plausible for this product class but
-no teardown or FCC filing was found to support it. The toy market widely uses
-**XN297** and **BK2425**, which resemble the nRF24L01+ but scramble the preamble
-and are **not bit-compatible** — an nRF24 sniffer hears nothing from them, and
-that silence is indistinguishable from "the kit is quiet".
+The chipset is **unconfirmed and, without disassembly, may stay that way**. The
+toy market widely uses **XN297** and **BK2425**, which resemble the nRF24L01+
+but scramble the preamble and are **not bit-compatible** — an nRF24 sniffer
+hears nothing from them, and that silence looks identical to "no radio fitted".
 
-So before any capture work is trusted:
+Non-invasive checks that remain available, in order of value:
 
-1. BLE-scan with the kit off, then on and firing. A new advertiser that tracks
-   the kit means the link is BLE, and this whole approach changes.
-2. Open a gun and a vest, and read the marking on the 2.4 GHz IC.
-
-| Marking | Verdict |
-| ------- | ------- |
-| nRF24L01 / nRF24L01+ / SI24R1 / RFX24C01 | Proceed |
-| XN297 / XN297L, BK2425 / BK2401 / BK5811 | Stop; re-plan around a different radio or an SDR |
-| BLE/proprietary SoC with no separate radio | Stop; re-plan |
+1. **Regulatory label.** Look on the underside, the battery/charge door, or
+   moulded into the grip. In the US an intentional radiator must carry an
+   **FCC ID**; finding one proves a radio exists and identifies it via the FCC
+   database. A UK/EU unit may show only CE/UKCA, so absence is weak evidence —
+   suggestive of no radio, but not proof.
+2. **BLE scan** with a phone (nRF Connect or similar), kit off then on and
+   firing. Rules the BLE case in or out without opening anything.
+3. **Vendor listing archaeology.** Identify the SKU from external features
+   (rechargeable, no vest, weapon-mode count) and check whether that specific
+   listing advertises 2.4 GHz sync. See the "Open questions" section.
+4. **Buy one vest.** The most decisive non-invasive test available: if the RF
+   link is gun-to-vest, a vest gives it a reason to transmit, and the tooling
+   here is ready to capture it the same evening. Only worth it if the listings
+   confirm the feature exists for these guns.
 
 ## Still unknown
 
-- The chipset (Phase 0).
-- Which channel(s) the kit uses, and its air data rate — a listener at the wrong
-  rate is deaf, so 250 k, 1 M and 2 M must each be tried.
-- Whether the link is continuous or event-driven (only on hits, pairing, or
-  power-on).
+- **Whether these guns contain a 2.4 GHz radio at all.** This is now the primary
+  question; everything else is downstream of it.
+- The chipset, if one exists — not resolvable without disassembly.
+- 250 kbps was never sniffed. Of the three air data rates, only 1 M and 2 M were
+  tested, on 3 of 126 channels.
+- Whether the link (if any) is event-driven, and on what event.
 - Packet structure, addressing, and whether the payload carries anything not
   already visible in the IR frames.
+
+## If work resumes
+
+The tooling is complete and needs no further build-out to take a first capture.
+The sequence would be: flash `pio run -e esp8266-rfprobe -t upload`, run
+`scan` for a baseline, `watch from=0 to=83 ms=150` with the kit off and again
+with it active, then `dwell` on any candidate to confirm it before believing it,
+and `sniff ch= rate=` on a confirmed channel. Feed the captured `RF …` lines
+through `LaserTag.Rf`; a non-zero CRC-valid count is the only result that counts
+as detection.
+
+Do not repeat the 2026-07-28 mistake: a candidate found by sweeping is not a
+finding until dwelling on it reproduces the effect.

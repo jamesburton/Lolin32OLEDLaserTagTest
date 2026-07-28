@@ -455,6 +455,30 @@ multiple team/damage codes, and `decode()` was verified against real gun fire.
 
 ---
 
+## RF (2.4 GHz) probe — paused, no signal found
+
+A side investigation into whether the Vatos kit also uses a 2.4 GHz link
+alongside its IR. **Result: nothing was detected**, and the leading explanation
+is that these gun-only units have no radio — see
+[docs/rf-protocol.md](docs/rf-protocol.md) for the evidence and the retractions.
+
+The tooling works and is kept for if the question reopens. An nRF24L01+ wired to
+an ESP8266 (`pio run -e esp8266-rfprobe`) provides five serial commands:
+
+| Command | Purpose |
+| ------- | ------- |
+| `selftest` | Reads back written registers — proves the SPI wiring |
+| `scan [sweeps]` | Fast sweep of all 126 channels via the power detector |
+| `watch from= to= ms=` | Dwells per channel; far more sensitive to short bursts |
+| `dwell ch= secs=` | Camps on one channel, 100 ms buckets for event correlation |
+| `sniff ch= rate= secs=` | Promiscuous capture (2-byte address, CRC off) |
+
+Wiring: CE=GPIO4, CSN=GPIO5, SCK=GPIO14, MOSI=GPIO13, MISO=GPIO12, 3V3 with a
+10 µF cap at the module. Captured `RF …` lines are analysed by the
+**`LaserTag.Rf`** library (CRC16 validation, bit realignment, address recovery);
+only a CRC-valid packet counts as a detection. Occupancy figures never do — that
+lesson cost an evening and is written up in the findings doc.
+
 ## The C# signal trainer
 
 `tools/IrSignalTrainer/` is a .NET console app that reads the board's serial
