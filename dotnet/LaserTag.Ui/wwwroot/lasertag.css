@@ -1,0 +1,144 @@
+/*
+ * Shared styling for both manager shells.
+ *
+ * Phone-first on purpose: this is used one-handed, outdoors, mid-game. Hence
+ * dark background (less glare, less battery on OLED), large touch targets, and
+ * navigation pinned to the bottom of the screen within thumb reach.
+ */
+
+:root {
+    --bg: #12141a;
+    --panel: #1b1f28;
+    --line: #2c3240;
+    --text: #e8ecf4;
+    --muted: #93a0b5;
+    --go: #2fbf71;
+    --danger: #e0483f;
+    --warn: #e8a33d;
+    --team1: #3b82f6;
+    --team2: #ef4444;
+    --team3: #22c55e;
+    --team4: #e5e7eb;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    padding: 0 1rem 5rem;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px;
+}
+
+h1 { font-size: 1.4rem; margin: 1rem 0 0.75rem; }
+h2 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; color: var(--muted); }
+.muted { color: var(--muted); }
+.error { color: var(--danger); font-weight: 600; }
+code { background: #000; padding: 0 0.25rem; border-radius: 3px; }
+
+/* Banners -------------------------------------------------------------- */
+.banner {
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+.banner-warn { background: #3a2c12; border: 1px solid var(--warn); }
+.banner ul { margin: 0.5rem 0 0; padding-left: 1.2rem; }
+
+/* Device cards --------------------------------------------------------- */
+.cards { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 0.75rem; }
+.card.offline { opacity: 0.55; }
+.card-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+.card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 0.5rem; margin: 0 0 0.75rem; }
+.card dl div { display: flex; justify-content: space-between; gap: 0.5rem; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; }
+
+.dot { width: 0.75rem; height: 0.75rem; border-radius: 50%; display: inline-block; background: var(--muted); }
+.team-1 .dot, .dot.team-1 { background: var(--team1); }
+.team-2 .dot, .dot.team-2 { background: var(--team2); }
+.team-3 .dot, .dot.team-3 { background: var(--team3); }
+.team-4 .dot, .dot.team-4 { background: var(--team4); }
+
+/* Buttons and forms ---------------------------------------------------- */
+.row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.btn {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    font-size: 1rem;
+    min-height: 44px; /* Apple/Android minimum comfortable touch target. */
+    cursor: pointer;
+}
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn-big { width: 100%; font-size: 1.15rem; padding: 1rem; margin-top: 1rem; }
+.btn-go { background: var(--go); border-color: var(--go); color: #06240f; font-weight: 700; }
+.btn-danger { background: var(--danger); border-color: var(--danger); color: #2a0603; font-weight: 700; }
+
+.form { display: grid; gap: 0.75rem; }
+label { display: grid; gap: 0.25rem; color: var(--muted); }
+label.wide { margin-bottom: 1rem; }
+label.check { grid-template-columns: auto 1fr; align-items: center; gap: 0.5rem; }
+input, select {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.6rem;
+    font-size: 1rem;
+    min-height: 44px;
+}
+
+/* Phase header --------------------------------------------------------- */
+.phase {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.75rem;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 0.75rem 1rem;
+}
+.phase-name { font-weight: 700; }
+.phase-state { color: var(--muted); text-transform: lowercase; }
+.phase-clock { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 1.3rem; }
+.phase-running { border-color: var(--go); }
+.phase-finished { border-color: var(--warn); }
+.winner { color: var(--warn); font-weight: 700; }
+
+/* Scoreboard ----------------------------------------------------------- */
+.scores { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: 1rem 0; }
+.score { background: var(--panel); border-left: 6px solid var(--muted); border-radius: 8px; padding: 0.75rem; }
+.score.team-1 { border-left-color: var(--team1); }
+.score.team-2 { border-left-color: var(--team2); }
+.score.team-3 { border-left-color: var(--team3); }
+.score.team-4 { border-left-color: var(--team4); }
+.score-team { display: block; color: var(--muted); font-size: 0.85rem; }
+.score-points { display: block; font-size: 2.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.score-alive { color: var(--muted); font-size: 0.85rem; }
+
+/* Tables and feeds ----------------------------------------------------- */
+.grid { width: 100%; border-collapse: collapse; }
+.grid th { text-align: left; color: var(--muted); font-weight: 500; padding: 0.4rem 0.5rem; }
+.grid td { padding: 0.5rem; border-top: 1px solid var(--line); }
+.grid tr.offline { opacity: 0.5; }
+.verdict-current { color: var(--go); }
+.verdict-outdated { color: var(--danger); }
+.verdict-newer { color: var(--warn); }
+
+.feed { list-style: none; margin: 0; padding: 0; font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.85rem; }
+.feed li { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line); }
+
+/* Bottom navigation ---------------------------------------------------- */
+.nav {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    display: flex; background: var(--panel); border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom); /* iOS home indicator */
+}
+.nav-item {
+    flex: 1; text-align: center; padding: 0.9rem 0.25rem;
+    color: var(--muted); text-decoration: none; font-size: 0.9rem;
+}
+.nav-item.active { color: var(--text); box-shadow: inset 0 3px 0 var(--go); }

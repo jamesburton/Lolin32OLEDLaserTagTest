@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\LaserTag.Ui\LaserTag.Ui.csproj" />
+    <ProjectReference Include="..\LaserTag.Runtime\LaserTag.Runtime.csproj" />
+    <ProjectReference Include="..\LaserTag.Client\LaserTag.Client.csproj" />
+    <ProjectReference Include="..\LaserTag.Game\LaserTag.Game.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+</Project>

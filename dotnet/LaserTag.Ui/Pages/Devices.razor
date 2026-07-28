@@ -1,0 +1,63 @@
+@page "/"
+@page "/devices"
+@inherits LiveComponentBase
+
+<h1>Devices</h1>
+<TelemetryBanner />
+
+@{
+    IReadOnlyList<RosterEntry> devices = Session.Devices();
+}
+
+@if (devices.Count == 0)
+{
+    <p class="muted">No boards seen yet.</p>
+}
+else
+{
+    <div class="cards">
+        @foreach (RosterEntry entry in devices)
+        {
+            <div class="card @(entry.Online ? "online" : "offline")">
+                <div class="card-head">
+                    <span class="dot team-@entry.LastHeartbeat.Team"></span>
+                    <strong>@entry.LastHeartbeat.Source</strong>
+                    <span class="muted">@entry.Id</span>
+                </div>
+                <dl>
+                    <div><dt>IP</dt><dd>@entry.LastHeartbeat.Ip</dd></div>
+                    <div><dt>Team</dt><dd>@entry.LastHeartbeat.Team</dd></div>
+                    <div><dt>HP</dt><dd>@entry.LastHeartbeat.Hp</dd></div>
+                    <div><dt>Firmware</dt><dd>@entry.LastHeartbeat.Fw</dd></div>
+                    <div><dt>State</dt><dd>@(entry.Online ? "online" : "offline")</dd></div>
+                </dl>
+                <div class="row">
+                    <button class="btn" @onclick="() => Identify(entry.Id)">Identify</button>
+                    <button class="btn" @onclick="() => Send(ControlKind.Reset, entry.Id)">Reset</button>
+                    <button class="btn" @onclick="() => Send(ControlKind.Activate, entry.Id)">Activate</button>
+                    <button class="btn" @onclick="() => Send(ControlKind.Deactivate, entry.Id)">Deactivate</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Sends a targeted control verb to one board.</summary>
+    /// <param name="kind">The verb.</param>
+    /// <param name="id">The device id, used as the CTL id= filter.</param>
+    private void Send(ControlKind kind, string id) =>
+        Session.SendControl(new Control { Kind = kind, Id = id });
+
+    /// <summary>
+    /// Flashes one board so it can be told apart physically.
+    /// </summary>
+    /// <param name="id">The device id.</param>
+    /// <remarks>
+    /// Identify is a REST command on the device rather than a CTL verb, so it
+    /// is expressed here as an activate pulse — the visible effect a board
+    /// gives without changing its persisted state.
+    /// </remarks>
+    private void Identify(string id) =>
+        Session.SendControl(new Control { Kind = ControlKind.Activate, Id = id, T = 1500 });
+}

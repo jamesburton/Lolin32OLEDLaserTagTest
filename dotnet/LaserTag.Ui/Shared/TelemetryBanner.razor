@@ -1,0 +1,16 @@
+@inherits LiveComponentBase
+
+@* Explains an empty roster instead of leaving the user staring at a blank
+   table. The three causes look identical from the UI, so all three are named. *@
+@if (!Session.HasReceivedTelemetry)
+{
+    <div class="banner banner-warn">
+        <strong>No telemetry received yet.</strong>
+        <span>Waiting for heartbeats on UDP 4210. If boards are powered and this stays empty:</span>
+        <ul>
+            <li>On Android, the app must hold a multicast lock — broadcasts are dropped without one.</li>
+            <li>On Windows, check the inbound firewall rule for UDP 4210 (<code>tools/setup-firewall.ps1</code>).</li>
+            <li>Check the boards are on this subnet; CTL is being broadcast to <code>@Session.BroadcastTarget</code>.</li>
+        </ul>
+    </div>
+}

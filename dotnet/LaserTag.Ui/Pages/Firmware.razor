@@ -1,0 +1,106 @@
+@page "/firmware"
+@inherits LiveComponentBase
+@using System.IO
+
+<h1>Firmware</h1>
+
+<p>
+    Available: <strong>@(_available ?? "unknown")</strong>
+    @if (_binPath is { Length: > 0 })
+    {
+        <span class="muted">(@_binPath)</span>
+    }
+    else
+    {
+        <span class="muted">— no firmware.bin found; build one or paste a path below.</span>
+    }
+</p>
+
+<label class="wide">
+    Firmware image
+    <input @bind="_binPath" @bind:after="ReadVersion" placeholder=".pio/build/esp32-s3-matrix-ota/firmware.bin" />
+</label>
+
+<table class="grid">
+    <thead>
+        <tr><th>Board</th><th>IP</th><th>Running</th><th>Verdict</th><th></th></tr>
+    </thead>
+    <tbody>
+        @foreach (RosterEntry entry in Session.Devices())
+        {
+            FirmwareVerdict verdict = FirmwareImage.Compare(entry.LastHeartbeat.Fw, _available);
+            <tr>
+                <td>@entry.LastHeartbeat.Source</td>
+                <td>@entry.LastHeartbeat.Ip</td>
+                <td>@entry.LastHeartbeat.Fw</td>
+                <td class="verdict-@verdict.ToString().ToLowerInvariant()">@verdict</td>
+                <td>
+                    <button class="btn" disabled="@(_busy || !entry.Online || _available is null)"
+                            @onclick="() => Push(entry)">
+                        Update
+                    </button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@if (_log.Count > 0)
+{
+    <h2>Update log</h2>
+    <ul class="feed">
+        @foreach (string line in _log)
+        {
+            <li>@line</li>
+        }
+    </ul>
+}
+
+@code {
+    // Same defaults as the console's `fw`/`ota` commands: the OTA build first,
+    // then the plain env.
+    private static readonly string[] DefaultBins =
+    [
+        Path.Combine(".pio", "build", "esp32-s3-matrix-ota", "firmware.bin"),
+        Path.Combine(".pio", "build", "esp32-s3-matrix", "firmware.bin"),
+    ];
+
+    private readonly List<string> _log = [];
+    private readonly FirmwareUpdater _updater = new();
+    private string? _binPath;
+    private string? _available;
+    private bool _busy;
+
+    /// <inheritdoc/>
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _binPath = DefaultBins.FirstOrDefault(File.Exists);
+        ReadVersion();
+    }
+
+    /// <summary>Reads the embedded LTFW marker from the selected image.</summary>
+    private void ReadVersion() =>
+        _available = _binPath is { Length: > 0 } && File.Exists(_binPath)
+            ? FirmwareImage.TryReadVersion(_binPath)
+            : null;
+
+    /// <summary>Pushes the image to one board over HTTP.</summary>
+    /// <param name="entry">The target board.</param>
+    private async Task Push(RosterEntry entry)
+    {
+        if (_binPath is null || !File.Exists(_binPath))
+        {
+            return;
+        }
+
+        _busy = true;
+        _log.Add($"{entry.Id}: uploading {_available}…");
+        FirmwareUpdater.Result result = await _updater
+            .UploadAsync(entry.LastHeartbeat.Ip, _binPath, CancellationToken.None);
+        _log.Add(result.Ok
+            ? $"{entry.Id}: OK — rebooting into the new image"
+            : $"{entry.Id}: FAILED — {result.Error} (pre-2.1.0 firmware has no /api/update; flash once via espota)");
+        _busy = false;
+    }
+}

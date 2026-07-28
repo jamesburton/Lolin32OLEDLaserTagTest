@@ -1,0 +1,63 @@
+@page "/live"
+@inherits LiveComponentBase
+
+@{
+    MatchSnapshot snapshot = Session.Snapshot();
+    IReadOnlyList<string> events = Session.RecentEvents();
+}
+
+<h1>Live</h1>
+
+<div class="phase phase-@snapshot.Phase.ToString().ToLowerInvariant()">
+    <span class="phase-name">@snapshot.ModeName</span>
+    <span class="phase-state">@snapshot.Phase</span>
+    <span class="phase-clock">@snapshot.Elapsed.ToString(@"mm\:ss")</span>
+    @if (snapshot.Remaining is { } remaining)
+    {
+        <span class="muted">left @remaining.ToString(@"mm\:ss")</span>
+    }
+    @if (snapshot.Winner is { } winner)
+    {
+        <span class="winner">@(winner == 0 ? "Draw" : $"Team {winner} wins")</span>
+    }
+</div>
+
+<div class="scores">
+    @foreach ((int team, int points) in snapshot.TeamScores.OrderByDescending(kv => kv.Value))
+    {
+        <div class="score team-@team">
+            <span class="score-team">Team @team</span>
+            <span class="score-points">@points</span>
+            <span class="score-alive">
+                @snapshot.Participants.Count(p => p.Team == team && p.Alive && p.Online) alive
+            </span>
+        </div>
+    }
+</div>
+
+<h2>Players</h2>
+<table class="grid">
+    <thead>
+        <tr><th>Board</th><th>Team</th><th>HP</th><th>State</th></tr>
+    </thead>
+    <tbody>
+        @foreach (Participant player in snapshot.Participants.OrderBy(p => p.Team).ThenBy(p => p.Hostname))
+        {
+            <tr class="@(player.Online ? string.Empty : "offline")">
+                <td>@player.Hostname</td>
+                <td><span class="dot team-@player.Team"></span> @player.Team</td>
+                <td>@player.Hp</td>
+                <td>@(!player.Online ? "offline" : player.Alive ? "alive" : "down")</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2>Events</h2>
+<ul class="feed">
+    @* Newest first: on a phone the top of the list is what you actually see. *@
+    @foreach (string line in events.Reverse().Take(40))
+    {
+        <li>@line</li>
+    }
+</ul>

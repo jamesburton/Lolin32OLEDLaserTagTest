@@ -1,0 +1,10 @@
+@* AdditionalAssemblies is what lets the shared screens in LaserTag.Ui route
+   here — the very same components the Android shell routes. *@
+<Router AppAssembly="typeof(Program).Assembly"
+        AdditionalAssemblies="new[] { typeof(LaserTag.Ui.IGameSession).Assembly }"
+        NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>

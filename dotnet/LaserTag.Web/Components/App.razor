@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#12141a" />
+    <title>Laser Tag Manager</title>
+    <base href="/" />
+    <link rel="stylesheet" href="_content/LaserTag.Ui/lasertag.css" />
+    <link rel="stylesheet" href="@Assets["LaserTag.Web.styles.css"]" />
+    <ImportMap />
+    <HeadOutlet />
+</head>
+
+<body>
+    @* Interactive server rendering app-wide: every screen reacts to the
+       engine's tick, so there is no meaningful static-render subset. *@
+    <Routes @rendermode="InteractiveServer" />
+    <ReconnectModal />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+</body>
+
+</html>

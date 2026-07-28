@@ -22,11 +22,18 @@ public static class ServiceCollectionExtensions
     /// Android must pass a multicast-lock implementation or it will receive
     /// nothing.
     /// </param>
+    /// <param name="listen">
+    /// When false the UDP listener is still resolvable but never started.
+    /// Tests need this: the socket sets <c>SO_REUSEADDR</c>, so two hosts bind
+    /// port 4210 without error and then compete for datagrams — a failure that
+    /// hides itself until something actually sends telemetry.
+    /// </param>
     /// <returns>The same collection, for chaining.</returns>
     public static IServiceCollection AddLaserTagRuntime(
         this IServiceCollection services,
         IPEndPoint broadcast,
-        IPlatformNetworkGuard? guard = null)
+        IPlatformNetworkGuard? guard = null,
+        bool listen = true)
     {
         services.AddSingleton<IControlSender>(new UdpControlSender(broadcast));
         services.AddSingleton(guard ?? IPlatformNetworkGuard.Null);
@@ -37,7 +44,11 @@ public static class ServiceCollectionExtensions
         // ever received a datagram, to explain an empty roster honestly.
         services.AddSingleton<UdpTelemetryService>();
         services.AddSingleton<MatchEngineService>();
-        services.AddHostedService(sp => sp.GetRequiredService<UdpTelemetryService>());
+        if (listen)
+        {
+            services.AddHostedService(sp => sp.GetRequiredService<UdpTelemetryService>());
+        }
+
         services.AddHostedService(sp => sp.GetRequiredService<MatchEngineService>());
         return services;
     }

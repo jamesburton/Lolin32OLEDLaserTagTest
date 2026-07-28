@@ -338,6 +338,74 @@ match.
 
 ---
 
+## Managers: web and Android
+
+Two graphical front ends for running a game, alongside the console REPL. Both
+render **the same screens from the same code** and run **the same match engine** —
+they differ only in which machine the engine runs on.
+
+```
+        LaserTag.Ui (Blazor screens + IGameSession)
+                    /                \
+      LaserTag.Web                    LaserTag.App
+   engine on the PC                engine on the phone
+                    \                /
+              LaserTag.Runtime (GameService, UDP listener, 4 Hz tick)
+                    LaserTag.Game + LaserTag.Client
+```
+
+Screens: **Devices** (roster with identify/reset/activate per board), **Match**
+(mode picker with per-mode parameters, start/stop), **Live** (scoreboard, player
+table, event feed), **Firmware** (running-vs-available versions and one-tap OTA,
+reusing the fleet-OTA pipeline).
+
+### Web manager
+
+```sh
+dotnet run --project dotnet/LaserTag.Web            # http://<pc-ip>:5080
+dotnet run --project dotnet/LaserTag.Web -- --broadcast 192.168.1.255
+```
+
+Binds `0.0.0.0:5080` over plain HTTP so any phone or laptop on the LAN can open
+it — no install, and iPhone guests work too. A PC must be running at play time.
+
+A JSON API sits alongside the UI for scripting:
+
+| Endpoint | Purpose |
+| -------- | ------- |
+| `GET /api/devices` | Roster with team, hp, firmware, online |
+| `GET /api/match` | Phase, clock, scores, players |
+| `POST /api/match/start` | Body e.g. `{"mode":"chase","duration":"2m","firstTo":5}` |
+| `POST /api/match/stop` | Stop the running match |
+| `POST /api/control` | e.g. `{"kind":"activate","id":"eb20f8","t":1500}` |
+
+### Android manager (the phone is the host)
+
+```sh
+dotnet build dotnet/LaserTag.App -f net10.0-android
+dotnet publish dotnet/LaserTag.App -f net10.0-android -c Release -p:AndroidPackageFormat=apk
+# -> dotnet/LaserTag.App/bin/Release/net10.0-android/publish/com.jamesburton.lasertag-Signed.apk
+```
+
+The phone binds UDP 4210, runs the engine and broadcasts CTL itself, so **no PC
+is needed at play time** — the point of the exercise. Requires the
+`maui-android` workload (`dotnet workload install maui-android`).
+
+Two Android-specific traps are handled in code, both of which produce a
+silently-empty roster rather than an error:
+
+- **Multicast lock.** Android drops inbound broadcast UDP unless the app holds a
+  `WifiManager.MulticastLock`. `AndroidMulticastGuard` holds one for the
+  listener's lifetime; the manifest needs `CHANGE_WIFI_MULTICAST_STATE`.
+- **MAUI never starts hosted services.** Unlike the Generic Host, `MauiApp`
+  builds a service provider but does not run `IHostedService`, so the listener
+  and tick loop are started explicitly in `App.OnStart`.
+
+> **Status:** the Android app is **build-verified only** — it compiles and
+> produces a signed APK, but no device or emulator was available, so its UDP
+> receive path has never run on real hardware. Treat the first on-device launch
+> as the real test of the multicast lock.
+
 ## Board capability HAL
 
 Each board is described by a compile-time `BoardProfile` struct (selected with

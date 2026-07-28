@@ -1,5 +1,19 @@
 # Android Game Controller — Options (2026-07-27 exploration)
 
+> **SUPERSEDED 2026-07-28 — both options were built.** Option B (phone-as-host)
+> shipped as `dotnet/LaserTag.App`, and Option C (web UI) shipped as
+> `dotnet/LaserTag.Web`; they share their screens via `dotnet/LaserTag.Ui` and
+> their engine via `dotnet/LaserTag.Runtime`. See
+> [the managers design](superpowers/specs/2026-07-28-managers-design.md) and the
+> README's "Managers" section. This page is kept for the reasoning that led
+> there.
+>
+> **One claim below proved wrong:** the `maui-android` workload was *not*
+> installed — only `android`, `ios`, `maccatalyst` and `maui-windows` were.
+> `dotnet workload install maui-android` fixed it. A second trap the exploration
+> missed: MAUI builds a service provider but never starts `IHostedService`, so
+> the UDP listener and tick loop must be started by hand.
+
 Goal: control the laser-tag game manager from a phone. Explored overnight per
 user request; no code committed yet — this doc is the decision aid.
 

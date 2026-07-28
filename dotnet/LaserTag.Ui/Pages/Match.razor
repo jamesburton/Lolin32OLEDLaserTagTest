@@ -1,0 +1,94 @@
+@page "/match"
+@inherits LiveComponentBase
+
+<h1>Match</h1>
+<TelemetryBanner />
+
+@{
+    MatchSnapshot snapshot = Session.Snapshot();
+    bool live = snapshot.Phase is MatchPhase.Countdown or MatchPhase.Running;
+}
+
+<div class="phase phase-@snapshot.Phase.ToString().ToLowerInvariant()">
+    <span class="phase-name">@snapshot.ModeName</span>
+    <span class="phase-state">@snapshot.Phase</span>
+    @if (snapshot.Remaining is { } remaining)
+    {
+        <span class="phase-clock">@remaining.ToString(@"mm\:ss")</span>
+    }
+</div>
+
+@if (live)
+{
+    <button class="btn btn-big btn-danger" @onclick="Stop">Stop match</button>
+}
+else
+{
+    <div class="form">
+        <label>
+            Mode
+            <select @bind="_request.Mode">
+                <option value="dm">Deathmatch</option>
+                <option value="elim">Elimination</option>
+                <option value="chase">Chase</option>
+            </select>
+        </label>
+
+        @if (_request.Mode == "dm")
+        {
+            <label>Duration <input @bind="_request.Duration" placeholder="5m" /></label>
+            <label>Points per hit <input type="number" @bind="_request.HitPoints" placeholder="1" /></label>
+            <label>Points per kill <input type="number" @bind="_request.KillPoints" placeholder="5" /></label>
+            <label>Respawn waves <input @bind="_request.WaveInterval" placeholder="off" /></label>
+        }
+        else if (_request.Mode == "elim")
+        {
+            <label>Time limit <input @bind="_request.Timer" placeholder="none" /></label>
+        }
+        else
+        {
+            <label>Duration <input @bind="_request.Duration" placeholder="5m" /></label>
+            <label>First to <input type="number" @bind="_request.FirstTo" placeholder="none" /></label>
+            <label>Shortest window <input @bind="_request.MinWindow" placeholder="2s" /></label>
+            <label>Longest window <input @bind="_request.MaxWindow" placeholder="5s" /></label>
+            <label>Gap between targets <input @bind="_request.Gap" placeholder="500ms" /></label>
+            <label>Wrong-target penalty <input type="number" @bind="_request.Penalty" placeholder="0" /></label>
+            <label class="check">
+                <input type="checkbox" @bind="_request.Dark" />
+                Dormant boards go dark (otherwise they show the live score)
+            </label>
+        }
+
+        <button class="btn btn-big btn-go" @onclick="Start">Start match</button>
+        @if (_error is { Length: > 0 })
+        {
+            <p class="error">@_error</p>
+        }
+    </div>
+}
+
+@code {
+    private readonly MatchRequest _request = new();
+    private string? _error;
+
+    /// <summary>Validates the form and starts a match.</summary>
+    private void Start()
+    {
+        if (!ModeFactory.TryCreate(_request, out IGameMode mode, out string error))
+        {
+            _error = error;
+            return;
+        }
+
+        // A null return means success; anything else is the engine's reason
+        // (an empty lobby being the usual one).
+        _error = Session.StartMatch(mode);
+    }
+
+    /// <summary>Stops the running match.</summary>
+    private void Stop()
+    {
+        Session.Stop();
+        _error = null;
+    }
+}

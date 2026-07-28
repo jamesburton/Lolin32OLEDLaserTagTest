@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true"
+                 android:usesCleartextTraffic="true"></application>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Required to receive the boards' subnet broadcasts: without
+         CHANGE_WIFI_MULTICAST_STATE the multicast lock cannot be taken, and
+         Android drops every inbound broadcast datagram silently. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Keeps the screen on during a match rather than running a foreground
+         service; simpler, and a match is only minutes long. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+</manifest>
