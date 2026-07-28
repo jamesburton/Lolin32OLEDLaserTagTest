@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Hosting;
 
-namespace LaserTag.Host;
+namespace LaserTag.Runtime;
 
 /// <summary>Drives <see cref="GameService.Tick"/> every 250 ms.</summary>
 public sealed class MatchEngineService(GameService game) : BackgroundService

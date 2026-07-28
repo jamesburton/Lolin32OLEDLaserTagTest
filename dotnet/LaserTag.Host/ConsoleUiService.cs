@@ -1,6 +1,7 @@
 using LaserTag.Client;
 using LaserTag.Client.Models;
 using LaserTag.Game;
+using LaserTag.Runtime;
 using Microsoft.Extensions.Hosting;
 using Spectre.Console;
 

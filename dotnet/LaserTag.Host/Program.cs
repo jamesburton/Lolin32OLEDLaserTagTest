@@ -1,6 +1,7 @@
 using System.Net;
 using LaserTag.Client;
 using LaserTag.Host;
+using LaserTag.Runtime;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -31,10 +32,7 @@ AnsiConsole.MarkupLineInterpolated($"CTL broadcast target: [bold]{broadcast}[/]"
 
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders(); // keep the console clean for the REPL
-builder.Services.AddSingleton<IControlSender>(new UdpControlSender(broadcast));
-builder.Services.AddSingleton<GameService>();
-builder.Services.AddHostedService<UdpTelemetryService>();
-builder.Services.AddHostedService<MatchEngineService>();
+builder.Services.AddLaserTagRuntime(broadcast);
 builder.Services.AddHostedService<ConsoleUiService>();
 
 await builder.Build().RunAsync();

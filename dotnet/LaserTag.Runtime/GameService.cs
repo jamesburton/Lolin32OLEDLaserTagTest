@@ -2,25 +2,67 @@ using LaserTag.Client;
 using LaserTag.Client.Models;
 using LaserTag.Game;
 
-namespace LaserTag.Host;
+namespace LaserTag.Runtime;
 
 /// <summary>
 /// Thread-safe facade over the single <see cref="MatchEngine"/> instance: the
-/// telemetry loop, tick loop, and console REPL all funnel through this lock.
+/// telemetry loop, tick loop, and every UI shell (console REPL, web manager,
+/// Android app) all funnel through this lock.
 /// </summary>
 public sealed class GameService
 {
+    /// <summary>How many recent event lines are retained for UI feeds.</summary>
+    private const int EventHistoryLimit = 200;
+
     private readonly object _gate = new();
     private readonly MatchEngine _engine;
     private readonly DeviceRoster _roster;
     private readonly IControlSender _sender;
     private readonly Dictionary<string, bool> _lastOnline = new(StringComparer.Ordinal);
     private readonly Dictionary<int, int> _pushedScores = [];
+    private readonly LinkedList<string> _recentEvents = new();
     private DateTimeOffset _lastScorePushAt = DateTimeOffset.MinValue;
     private bool _finalScoresPushed;
 
     /// <summary>Raised with a printable line whenever something noteworthy happens.</summary>
     public event Action<string>? Event;
+
+    /// <summary>
+    /// Raised after every tick so a UI can re-render on change.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="Event"/>, which carries printable lines for the
+    /// console and the live feed. Graphical shells need a "something moved"
+    /// signal rather than text, and polling a 4 Hz engine from a UI thread
+    /// wastes work when most ticks change nothing visible.
+    /// </remarks>
+    public event Action? StateChanged;
+
+    /// <summary>The most recent event lines, oldest first, for UI event feeds.</summary>
+    /// <returns>A snapshot copy, safe to enumerate off-thread.</returns>
+    public IReadOnlyList<string> RecentEvents()
+    {
+        lock (_gate)
+        {
+            return [.. _recentEvents];
+        }
+    }
+
+    /// <summary>Records an event line and forwards it to subscribers.</summary>
+    /// <param name="line">The printable line.</param>
+    private void Raise(string line)
+    {
+        lock (_gate)
+        {
+            _recentEvents.AddLast(line);
+            while (_recentEvents.Count > EventHistoryLimit)
+            {
+                _recentEvents.RemoveFirst();
+            }
+        }
+
+        Event?.Invoke(line);
+    }
 
     /// <summary>Initializes the service.</summary>
     /// <param name="sender">The CTL transport (shared with the engine).</param>
@@ -48,11 +90,11 @@ public sealed class GameService
 
         if (message is HitEvent hit)
         {
-            Event?.Invoke($"HIT {hit.Victim} by team {hit.ShooterTeam} dmg={hit.Dmg} hp={hit.Hp}");
+            Raise($"HIT {hit.Victim} by team {hit.ShooterTeam} dmg={hit.Dmg} hp={hit.Hp}");
         }
         else if (message is StateEvent st)
         {
-            Event?.Invoke($"STATE {st.Source} -> {st.S}{(st.Hp is { } hp ? $" hp={hp}" : string.Empty)}");
+            Raise($"STATE {st.Source} -> {st.S}{(st.Hp is { } hp ? $" hp={hp}" : string.Empty)}");
         }
     }
 
@@ -92,12 +134,12 @@ public sealed class GameService
         // lock. Fire all events here, after release.
         foreach (string id in offlineIds)
         {
-            Event?.Invoke($"OFFLINE {id}");
+            Raise($"OFFLINE {id}");
         }
 
         if (before != after)
         {
-            Event?.Invoke(after == MatchPhase.Finished
+            Raise(after == MatchPhase.Finished
                 ? $"GAME OVER — winner: {(winner == 0 ? "draw" : $"team {winner}")}"
                 : $"PHASE {before} -> {after}");
         }
@@ -127,6 +169,10 @@ public sealed class GameService
         {
             _finalScoresPushed = false;
         }
+
+        // Fired outside the lock for the same reason as the Event raises above:
+        // a UI re-render must never be able to stall telemetry ingest.
+        StateChanged?.Invoke();
     }
 
     /// <summary>Starts a match with the currently online roster as the lobby.</summary>
