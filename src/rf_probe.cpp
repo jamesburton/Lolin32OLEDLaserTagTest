@@ -111,36 +111,59 @@ void commandScan(uint16_t sweeps)
     }
 }
 
+// Fixed sampling interval, so a "high" count is a comparable occupancy figure
+// rather than an artefact of how fast the polling loop happens to spin.
+constexpr uint32_t kSampleIntervalUs = 500;
+
+/// One channel's occupancy measurement: how many fixed-rate samples read high.
+struct Occupancy
+{
+    uint16_t high;
+    uint16_t samples;
+};
+
 /**
- * Samples the RPD on one channel for a while, re-arming after each trip.
+ * Measures RPD occupancy on one channel at a fixed sample rate.
  *
- * The RPD latches, so detecting a *second* burst needs CE toggled low/high to
- * re-arm the measurement. Returns how many trips were seen.
+ * Counting raw SPI polls is not comparable between commands: the count scales
+ * with loop speed, not with airtime. Sampling on a fixed 500us cadence and
+ * reporting high-vs-total makes runs comparable to each other, which is the
+ * whole point of an A/B against a control.
+ *
+ * The RPD latches, so CE is toggled after each sample to re-arm the
+ * measurement; the settle delay is inside the fixed interval.
  */
-uint16_t sampleChannel(uint8_t channel, uint16_t durationMs)
+Occupancy sampleChannel(uint8_t channel, uint16_t durationMs)
 {
     radio.ceLow();
     radio.writeReg(Nrf24Raw::kRfCh, channel);
     radio.ceHigh();
     delayMicroseconds(200); // PLL settle before the first sample counts.
 
-    uint16_t trips = 0;
+    Occupancy result = {0, 0};
     uint32_t deadline = millis() + durationMs;
+    uint32_t nextSample = micros();
     while (static_cast<int32_t>(millis() - deadline) < 0)
     {
-        if (radio.readReg(Nrf24Raw::kRpd) & 0x01)
+        while (static_cast<int32_t>(micros() - nextSample) < 0)
         {
-            ++trips;
-            radio.ceLow(); // Re-arm: the RPD latch clears on the next measurement.
-            radio.ceHigh();
-            delayMicroseconds(150);
+            // Spin to the sample instant: pacing is what makes counts comparable.
         }
 
+        nextSample += kSampleIntervalUs;
+        if (radio.readReg(Nrf24Raw::kRpd) & 0x01)
+        {
+            ++result.high;
+        }
+
+        ++result.samples;
+        radio.ceLow(); // Re-arm the latch for the next sample.
+        radio.ceHigh();
         yield();
     }
 
     radio.ceLow();
-    return trips;
+    return result;
 }
 
 /**
@@ -157,10 +180,12 @@ void commandWatch(uint8_t from, uint8_t to, uint16_t msPerChannel)
     Serial.printf("WATCH start from=%u to=%u ms=%u\n", from, to, msPerChannel);
     for (uint8_t ch = from; ch <= to; ++ch)
     {
-        uint16_t trips = sampleChannel(ch, msPerChannel);
-        if (trips > 0)
+        Occupancy o = sampleChannel(ch, msPerChannel);
+        if (o.high > 0)
         {
-            Serial.printf("WATCH ch=%u mhz=%u trips=%u\n", ch, 2400u + ch, trips);
+            Serial.printf("WATCH ch=%u mhz=%u high=%u samples=%u pct=%u\n",
+                          ch, 2400u + ch, o.high, o.samples,
+                          o.samples ? (o.high * 100u) / o.samples : 0u);
         }
 
         if (ch == 125)
@@ -184,18 +209,21 @@ void commandDwell(uint8_t channel, uint16_t seconds)
     configureForScan();
     Serial.printf("DWELL start ch=%u mhz=%u secs=%u - fire now\n", channel, 2400u + channel, seconds);
     uint16_t buckets = seconds * 10;
-    uint16_t total = 0;
+    uint32_t high = 0;
+    uint32_t samples = 0;
     for (uint16_t i = 0; i < buckets; ++i)
     {
-        uint16_t trips = sampleChannel(channel, 100);
-        total += trips;
-        if (trips > 0)
+        Occupancy o = sampleChannel(channel, 100);
+        high += o.high;
+        samples += o.samples;
+        if (o.high > 0)
         {
-            Serial.printf("DWELL t=%ums trips=%u\n", i * 100u, trips);
+            Serial.printf("DWELL t=%ums high=%u/%u\n", i * 100u, o.high, o.samples);
         }
     }
 
-    Serial.printf("DWELL done ch=%u total=%u buckets=%u\n", channel, total, buckets);
+    Serial.printf("DWELL done ch=%u high=%lu samples=%lu pct=%lu\n",
+                  channel, high, samples, samples ? (high * 100u) / samples : 0u);
 }
 }
 
