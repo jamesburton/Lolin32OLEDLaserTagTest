@@ -204,6 +204,103 @@ void commandWatch(uint8_t from, uint8_t to, uint16_t msPerChannel)
  * coincides with each shot shows up as isolated non-zero buckets, which ambient
  * WiFi does not produce.
  */
+/// Maps a rate token to its RF_SETUP bits. Returns false if unrecognised.
+bool rateBits(const String &token, uint8_t &bits)
+{
+    if (token == "1m")
+    {
+        bits = 0x00; // RF_DR_LOW=0, RF_DR_HIGH=0.
+    }
+    else if (token == "2m")
+    {
+        bits = 0x08; // RF_DR_HIGH.
+    }
+    else if (token == "250k")
+    {
+        bits = 0x20; // RF_DR_LOW.
+    }
+    else
+    {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Promiscuous capture (Goodspeed): an illegal 2-byte address width with the
+ * pseudo-address 0x00AA and CRC disabled makes the radio accept any burst whose
+ * bits happen to match, spilling the real 5-byte address into the payload.
+ *
+ * Roughly one capture in twenty is a genuine packet; the rest is noise that the
+ * host-side CRC check filters out. That yield is expected, not a fault. The air
+ * data rate must match the target exactly - a 2Mbps transmitter is invisible to
+ * a 1Mbps listener, which is the most common reason a session looks dead.
+ */
+void commandSniff(uint8_t channel, const String &rateToken, uint16_t seconds)
+{
+    uint8_t bits = 0;
+    if (!rateBits(rateToken, bits))
+    {
+        Serial.println(F("SNIFF FAIL - rate must be 250k, 1m or 2m"));
+        return;
+    }
+
+    radio.ceLow();
+    radio.writeReg(Nrf24Raw::kEnAa, 0x00);      // Auto-ack off: it needs a real address.
+    radio.writeReg(Nrf24Raw::kSetupRetr, 0x00); // No retransmit.
+    radio.writeReg(Nrf24Raw::kSetupAw, 0x00);   // Illegal 2-byte width: the trick.
+    radio.writeReg(Nrf24Raw::kRfSetup, bits);
+    radio.writeReg(Nrf24Raw::kRfCh, channel);
+
+    const uint8_t pseudoAddress[2] = {0xAA, 0x00}; // LSB first = 0x00AA.
+    radio.writeReg(Nrf24Raw::kRxAddrP0, pseudoAddress, sizeof(pseudoAddress));
+    radio.writeReg(Nrf24Raw::kRxPwP0, 32);
+    radio.writeReg(Nrf24Raw::kEnRxaddr, 0x01);
+    radio.writeReg(Nrf24Raw::kConfig, 0x03); // PWR_UP | PRIM_RX, EN_CRC cleared.
+    delay(2);
+    radio.cmd(Nrf24Raw::kFlushRx);
+    radio.ceHigh();
+
+    Serial.printf("SNIFF start ch=%u mhz=%u rate=%s secs=%u\n", channel, 2400u + channel,
+                  rateToken.c_str(), seconds);
+    uint32_t captured = 0;
+    uint8_t payload[32];
+    uint32_t deadline = millis() + (seconds * 1000u);
+    while (static_cast<int32_t>(millis() - deadline) < 0 && !Serial.available())
+    {
+        if ((radio.readReg(Nrf24Raw::kStatus) & Nrf24Raw::kRxDr) == 0)
+        {
+            yield();
+            continue;
+        }
+
+        radio.readPayload(payload, sizeof(payload));
+        radio.writeReg(Nrf24Raw::kStatus, Nrf24Raw::kRxDr); // Write 1 to clear.
+
+        Serial.printf("RF ch=%u rate=%s ts=%lu n=32 data=", channel, rateToken.c_str(), micros());
+        for (uint8_t i = 0; i < sizeof(payload); ++i)
+        {
+            Serial.printf("%02X", payload[i]);
+        }
+
+        Serial.println();
+        ++captured;
+
+        // The RX FIFO holds three packets; flushing keeps the stream fresh
+        // rather than replaying a backlog after a burst.
+        radio.cmd(Nrf24Raw::kFlushRx);
+    }
+
+    while (Serial.available())
+    {
+        Serial.read();
+    }
+
+    radio.ceLow();
+    Serial.printf("SNIFF done ch=%u captured=%lu\n", channel, captured);
+}
+
 void commandDwell(uint8_t channel, uint16_t seconds)
 {
     configureForScan();
@@ -232,7 +329,8 @@ void setup()
     Serial.begin(115200);
     delay(200);
     radio.begin(kCePin, kCsnPin);
-    Serial.println(F("RF probe ready - commands: selftest, scan [sweeps], watch from= to= ms=, dwell ch= secs="));
+    Serial.println(F("RF probe ready - commands: selftest, scan [sweeps], watch from= to= ms=, "
+                     "dwell ch= secs=, sniff ch= rate= secs="));
 }
 
 void loop()
@@ -285,8 +383,33 @@ void loop()
             commandDwell(static_cast<uint8_t>(ch), static_cast<uint16_t>(secs));
         }
     }
+    else if (line.startsWith("sniff"))
+    {
+        int chAt = line.indexOf("ch=");
+        int rateAt = line.indexOf("rate=");
+        int secsAt = line.indexOf("secs=");
+        long ch = chAt >= 0 ? line.substring(chAt + 3).toInt() : -1;
+        long secs = secsAt >= 0 ? line.substring(secsAt + 5).toInt() : 15;
+        String rate = rateAt >= 0 ? line.substring(rateAt + 5) : String("1m");
+        int space = rate.indexOf(' ');
+        if (space >= 0)
+        {
+            rate = rate.substring(0, space);
+        }
+
+        rate.trim();
+        if (ch < 0 || ch > 125 || secs < 1)
+        {
+            Serial.println(F("usage: sniff ch=<0-125> rate=<250k|1m|2m> secs=<n>"));
+        }
+        else
+        {
+            commandSniff(static_cast<uint8_t>(ch), rate, static_cast<uint16_t>(secs));
+        }
+    }
     else if (line.length() > 0)
     {
-        Serial.println(F("unknown command - try: selftest, scan [sweeps], watch from= to= ms=, dwell ch= secs="));
+        Serial.println(F("unknown command - try: selftest, scan [sweeps], watch from= to= ms=, "
+                         "dwell ch= secs=, sniff ch= rate= secs="));
     }
 }
