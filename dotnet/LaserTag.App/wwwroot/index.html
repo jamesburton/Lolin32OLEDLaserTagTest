@@ -7,21 +7,19 @@
     <base href="/" />
     <!-- The same stylesheet the web manager serves, from the shared library. -->
     <link rel="stylesheet" href="_content/LaserTag.Ui/lasertag.css" />
+    <!-- Android-only corrections, loaded after so they win. -->
+    <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="LaserTag.App.styles.css" />
     <link rel="icon" href="data:,">
 </head>
 
 <body>
 
-    <div class="status-bar-safe-area"></div>
-
     <div id="app">Loading...</div>
 
-    <div id="blazor-error-ui" data-nosnippet>
-        An unhandled error has occurred.
-        <a href="." class="reload">Reload</a>
-        <span class="dismiss">🗙</span>
-    </div>
+    <!-- The Blazor error banner lives in MainLayout; a second copy here would
+         render twice on screen. -->
+
 
     <script src="_framework/blazor.webview.js" autostart="false"></script>
 

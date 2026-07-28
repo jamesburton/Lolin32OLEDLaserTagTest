@@ -25,8 +25,21 @@ Spec: `docs/superpowers/specs/2026-07-28-managers-design.md`. Supersedes
 - **`LaserTag.App`** — MAUI Blazor Hybrid, `net10.0-android` only, phone-as-host
   (no PC at play time). `dotnet publish dotnet/LaserTag.App -f net10.0-android
   -c Release -p:AndroidPackageFormat=apk` → signed 29 MB APK.
-  **BUILD-VERIFIED ONLY — no device/emulator was available, so its UDP receive
-  path has never actually run.** First on-device launch is the real test.
+  **RUNS on an Android 15 emulator** — installed via adb, screens render,
+  navigation works, broadcast discovery found `10.0.2.255:4210`, no crashes
+  (screenshots in `docs/images/`). **Still unverified: receiving real
+  telemetry** — an emulator is behind NAT so host broadcasts never arrive, and
+  the multicast lock could not be exercised. A real phone on the boards' Wi-Fi
+  is the true test.
+- **Two bugs the emulator run caught that no build could:** the Blazor error
+  banner (`#blazor-error-ui`) is shown by default and was rendering permanently
+  — the project templates' `app.css` had hidden it, and swapping to the shared
+  stylesheet lost that rule (now in `lasertag.css`, and the duplicate copy in
+  `index.html` removed). And Android 15 forces edge-to-edge, drawing the web
+  view under the status bar; `env(safe-area-inset-top)` is 0 in an Android
+  WebView and the manifest's `windowOptOutEdgeToEdgeEnforcement` did not take,
+  so `LaserTag.App/wwwroot/app.css` applies a fixed 30px inset in that shell
+  only.
 - **Two Android traps handled** (both fail as a silently empty roster, never an
   error): Android drops inbound broadcast UDP without a
   `WifiManager.MulticastLock` (`AndroidMulticastGuard` + manifest

@@ -401,10 +401,17 @@ silently-empty roster rather than an error:
   builds a service provider but does not run `IHostedService`, so the listener
   and tick loop are started explicitly in `App.OnStart`.
 
-> **Status:** the Android app is **build-verified only** — it compiles and
-> produces a signed APK, but no device or emulator was available, so its UDP
-> receive path has never run on real hardware. Treat the first on-device launch
-> as the real test of the multicast lock.
+| Android app | Web manager |
+| ----------- | ----------- |
+| ![Android Devices screen](docs/images/manager-android-devices.png) | ![Web Devices screen](docs/images/manager-web-devices.png) |
+
+> **Status:** the Android app **runs** — installed and driven on an Android 15
+> emulator, where the shared screens render, navigation works and broadcast
+> discovery picked up the right subnet. What is **still unverified** is the one
+> thing that matters most: **receiving real telemetry**. An emulator sits behind
+> NAT, so host broadcasts never reach it, and the multicast lock therefore could
+> not be exercised. Treat the first run on a real phone, on the same Wi-Fi as
+> the boards, as the true test.
 
 ## Board capability HAL
 

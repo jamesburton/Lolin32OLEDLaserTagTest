@@ -1,0 +1,17 @@
+/*
+ * Android shell overrides. The shared look lives in
+ * _content/LaserTag.Ui/lasertag.css; only platform corrections belong here.
+ */
+
+/*
+ * Android 15 (API 35) forces apps edge-to-edge, so the web view is drawn under
+ * the status bar and the first heading is clipped. A WebView reports
+ * env(safe-area-inset-top) as 0 on Android, so the CSS inset used for iOS
+ * cannot compensate, and the manifest's windowOptOutEdgeToEdgeEnforcement did
+ * not take effect under MAUI's theme. A fixed inset is the pragmatic fix: it
+ * costs a little space on older Android versions that did not need it, and it
+ * is confined to this shell so the web manager is unaffected.
+ */
+body {
+    padding-top: max(env(safe-area-inset-top, 0px), 30px);
+}

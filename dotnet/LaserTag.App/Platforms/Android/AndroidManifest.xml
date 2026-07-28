@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- windowOptOutEdgeToEdgeEnforcement: Android 15 (API 35) forces apps
+         edge-to-edge, which draws the web view under the status bar and clips
+         the first heading. A WebView reports env(safe-area-inset-top) as 0 on
+         Android, so CSS cannot compensate; opting out is the correct fix. -->
     <application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true"
-                 android:usesCleartextTraffic="true"></application>
+                 android:usesCleartextTraffic="true"
+                 android:windowOptOutEdgeToEdgeEnforcement="true"></application>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Required to receive the boards' subnet broadcasts: without

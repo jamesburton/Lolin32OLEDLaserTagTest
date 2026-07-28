@@ -25,7 +25,9 @@
 
 body {
     margin: 0;
-    padding: 0 1rem 5rem;
+    /* Top inset keeps the first heading clear of the phone's status bar; the
+       bottom padding clears the fixed nav. */
+    padding: env(safe-area-inset-top, 0) 1rem 5rem;
     background: var(--bg);
     color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -53,10 +55,13 @@ code { background: #000; padding: 0 0.25rem; border-radius: 3px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 0.75rem; }
 .card.offline { opacity: 0.55; }
 .card-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
-.card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 0.5rem; margin: 0 0 0.75rem; }
-.card dl div { display: flex; justify-content: space-between; gap: 0.5rem; }
-.card dt { color: var(--muted); }
-.card dd { margin: 0; }
+/* minmax(0, 1fr) rather than 1fr: a plain 1fr refuses to shrink below its
+   content, so a long IP address pushed the neighbouring column's value off the
+   card entirely (labels visible, values gone). */
+.card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.25rem 0.75rem; margin: 0 0 0.75rem; }
+.card dl div { display: flex; justify-content: space-between; gap: 0.5rem; min-width: 0; }
+.card dt { color: var(--muted); white-space: nowrap; }
+.card dd { margin: 0; min-width: 0; overflow-wrap: anywhere; text-align: right; }
 
 .dot { width: 0.75rem; height: 0.75rem; border-radius: 50%; display: inline-block; background: var(--muted); }
 .team-1 .dot, .dot.team-1 { background: var(--team1); }
@@ -93,6 +98,11 @@ input, select {
     padding: 0.6rem;
     font-size: 1rem;
     min-height: 44px;
+
+    /* An <input> carries an intrinsic width from its `size` attribute, so in a
+       grid it sizes to ~180px rather than filling its column. */
+    width: 100%;
+    min-width: 0;
 }
 
 /* Phase header --------------------------------------------------------- */
@@ -130,6 +140,26 @@ input, select {
 
 .feed { list-style: none; margin: 0; padding: 0; font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.85rem; }
 .feed li { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line); }
+
+/* Blazor's error banner ------------------------------------------------
+ * Blazor reveals this by setting `display: block` inline when a circuit or
+ * component throws, so it MUST default to hidden. Both shells previously relied
+ * on the project templates' app.css for this rule; dropping that stylesheet in
+ * favour of this shared one left the banner permanently on screen, which looked
+ * exactly like a real crash. */
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    bottom: 3.5rem;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    padding: 0.75rem 1rem;
+    background: var(--danger);
+    color: #2a0603;
+    font-weight: 600;
+}
+#blazor-error-ui .dismiss { float: right; cursor: pointer; }
 
 /* Bottom navigation ---------------------------------------------------- */
 .nav {
