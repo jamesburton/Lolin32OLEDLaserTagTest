@@ -67,6 +67,35 @@ and no documented procedure for retrofitting vests to a gun-only set. So "buy a
 vest to test the link" is **not currently an available experiment**; the vests
 appear only inside complete bundles.
 
+### UK/EU markings are NOT diagnostic (checked 2026-07-28)
+
+The unit carries CE and UKCA marks and no FCC ID. **This tells us nothing about
+whether it has a radio**, and the tempting inference must not be made:
+
+- **There is no EU or UK equivalent of the FCC ID.** Under the Radio Equipment
+  Directive (2014/53/EU) and the UK Radio Equipment Regulations 2017, radio
+  equipment carries the same CE/UKCA mark as a non-radio toy, plus generic
+  traceability information (type/batch/serial, manufacturer address) that every
+  product needs anyway. A 2.4 GHz toy and an IR-only toy can be visually
+  identical on the label.
+- **A plain CE with no four-digit number is normal for radio devices.** That
+  number appears only when a notified body was involved. A 2.4 GHz short-range
+  device conforming to harmonised standard EN 300 328 is self-assessed by the
+  manufacturer (Annex II, Module A), so a plain unnumbered CE is exactly what an
+  RF-equipped unit would show. Same logic for UKCA and approved-body numbers.
+- The absence of an FCC ID is explained entirely by this being a UK-market unit;
+  the FCC labelling obligation applies to US-market goods.
+
+What *would* be diagnostic lives on the packaging and in the manual, both of
+which are gone: RED Article 10(8) requires the **frequency band and maximum RF
+power to be stated in the instructions** for radio equipment, Article 10(10)
+requires restriction information on the packaging, and the Declaration of
+Conformity would cite EN 300 328. Text such as "2.4G" or an antenna logo printed
+on the device or box is common practice but not mandated.
+
+So the markings are **non-diagnostic, not weak evidence**. The case for "no
+radio" rests entirely on the measurements and the SKU listing pattern.
+
 ### The one non-invasive check that would settle it
 
 Vatos's manufacturer (Canhui Plastic Toys) holds FCC ID **`2A6LV-BB1550F`**, a
@@ -75,9 +104,26 @@ system at **2407.0–2475.0 MHz**, ~1 mW. So RF-equipped units in this family do
 exist and are labelled.
 
 **Look on the underside, battery/charge door or grip for an "FCC ID: 2A…" label
-and look it up at fccid.io.** A label proves a radio and names its band; no
-label at all (US-market units must carry one for an intentional radiator) is
-weak-but-real evidence against, though a UK/EU unit may show only CE/UKCA.
+and look it up at fccid.io.** A label proves a radio and names its band.
+
+**Checked on 2026-07-28: no FCC ID, only CE and UKCA.** As set out above, that
+is expected for a UK-market unit and proves nothing either way.
+
+### Best remaining non-invasive test: does anything sync between two guns?
+
+A radio needs a job. If no information ever crosses between units except by
+infrared line-of-sight, there is nothing for a 2.4 GHz link to do. So:
+
+1. Note whether either gun's display ever shows data about the *other* player —
+   an opponent's score, life, team, or a "players connected" count. Purely local
+   state (own ammo, own life, own team) needs no radio.
+2. Put the two guns in **separate rooms with no IR path**, power both, fire, and
+   see whether either reacts or changes state. Any cross-unit effect without
+   line of sight requires RF.
+3. Check whether team assignment on one gun ever propagates to the other.
+
+A clean negative on all three, combined with the capture evidence, is about as
+close to proof as is reachable without opening the units.
 
 ### Refinement if work ever resumes
 
