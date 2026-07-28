@@ -7,10 +7,28 @@ Working notes for the RF sub-project. Design:
 Written in the spirit of [gun-protocol.md](gun-protocol.md): confirmed
 observations and inference are kept visibly separate.
 
+## Decision (2026-07-28): stay on IR for these units
+
+**The RF sub-project is closed for this kit.** These guns will be integrated
+over **infrared only**, using the already-decoded protocol in
+[gun-protocol.md](gun-protocol.md), which works and is proven on hardware.
+
+The reasoning, in short: no signal was detected across every scenario we could
+stage; the product-line evidence says 2.4 GHz ships with vest-bundled sets and
+these are the vest-free rechargeable units; no standalone vests are sold, so the
+one decisive experiment is unavailable; the units cannot be opened; and UK
+markings cannot distinguish a radio from an inert toy. Continuing would mean
+buying a different product to test a hypothesis the evidence already argues
+against.
+
+Nothing here is wasted if the question reopens — with a labelled or
+vest-bundled unit, the probe and analysis pipeline are ready to take a capture
+the same evening. See "If work resumes" at the end, and the tool usage guide in
+[tools/README.md](../../tools/README.md#rf-probe-24-ghz-capture-and-diagnostics).
+
 ## Status
 
-**Paused, pending evidence that the kit has a radio at all.** The tooling is
-finished and proven; the target has not been shown to exist.
+The tooling is finished and proven; the target was never shown to exist.
 
 | Phase | State |
 | ----- | ----- |

@@ -1,5 +1,13 @@
 # RF Protocol Analysis Implementation Plan
 
+> **STATUS 2026-07-28: CLOSED for the current kit.** Tasks 1-5 are implemented
+> and committed (probe firmware with `selftest`/`scan`/`watch`/`dwell`/`sniff`,
+> and `LaserTag.Rf` with 16 tests green). Task 0 is permanently blocked — the
+> units cannot be opened — and no signal was ever detected, so Task 6
+> (`RfTrainer`) was not built: there is nothing to capture interactively. Task 7
+> is done in the form of `docs/rf-protocol.md` and the tools/README guide.
+> Resume only with a labelled or vest-bundled unit; see the findings doc.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Detect, capture and document the Vatos kit's 2.4 GHz link, using an ESP8266-hosted nRF24L01+ as a probe and a .NET analysis pipeline.

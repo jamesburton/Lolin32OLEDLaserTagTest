@@ -47,6 +47,97 @@ Training stores whichever form applies. `signatures.json` is the library:
 ]
 ```
 
+## RF probe (2.4 GHz capture and diagnostics)
+
+Tooling from the RF sub-project, which investigated whether the Vatos kit uses a
+2.4 GHz link alongside its IR. **Nothing was detected and the work is parked**
+(see [docs/rf-protocol.md](../docs/rf-protocol.md)); this section is here so the
+tools can be picked up again without rediscovering how they work.
+
+### Hardware
+
+An nRF24L01+ module wired to an ESP8266 over SPI. The module was pulled from an
+LC Technology `NRF24L01-TTL_V2` adaptor — that board's own firmware is a
+transparent serial bridge and **cannot** capture foreign traffic, so only its
+socketed radio is useful.
+
+| nRF24 pin | ESP8266 GPIO | Silk |
+| --------- | ------------ | ---- |
+| GND / VCC | GND / 3V3 | 3.3 V only, never 5 V |
+| CE | GPIO4 | D2 |
+| CSN | GPIO5 | D1 |
+| SCK | GPIO14 | D5 |
+| MOSI | GPIO13 | D7 |
+| MISO | GPIO12 | D6 |
+| IRQ | — | unconnected; the probe polls |
+
+CE and CSN deliberately avoid GPIO15 and GPIO2 — both are boot-strapping pins
+and CSN idles high, which can stop the board booting. Fit a **10 µF capacitor
+across the module's supply**: without it the radio browns out and produces
+phantom captures. Keep leads under about 10 cm.
+
+```sh
+pio run -e esp8266-rfprobe -t upload --upload-port COM6
+pio device monitor -e esp8266-rfprobe
+```
+
+### Commands
+
+| Command | What it does |
+| ------- | ------------ |
+| `selftest` | Writes then reads back `RF_CH`/`SETUP_AW`. Proves the SPI wiring before anything else is believed. All `0x00`/`0xFF` means MISO/MOSI swapped, CSN miswired, or no 3V3. |
+| `scan [sweeps]` | Sweeps all 126 channels reading the power detector. Fast, low sensitivity — finds continuous carriers, misses bursts. |
+| `watch from= to= ms=` | Dwells `ms` per channel over a range. ~100× the listening time of `scan`, so it can catch short bursts. Reports `high/samples` and a percentage. |
+| `dwell ch= secs=` | Camps on one channel reporting 100 ms buckets. This is how you correlate activity with an event (a trigger pull, a power-on). |
+| `sniff ch= rate= secs=` | Promiscuous capture at `250k`, `1m` or `2m`. Emits `RF ch= rate= ts= n= data=<hex>` lines for offline analysis. |
+
+### Method that actually works
+
+1. `selftest` — never trust a session that hasn't passed this.
+2. `scan` for orientation, then `watch` over the band **with the target off** to
+   get a control, and again with it active. Run the control close in time: WiFi
+   occupancy swings by more than most signals of interest.
+3. **Confirm any candidate with `dwell` before believing it.** Three candidates
+   died at this step during the 2026-07-28 session; a sweep visits each channel
+   briefly, so a passing WiFi burst can look like a 37% spike.
+4. `sniff` on a confirmed channel, at each data rate in turn — a 2 Mbps
+   transmitter is completely invisible to a 1 Mbps listener.
+5. Analyse offline. **Only a CRC-valid packet counts as a detection.**
+
+Interpreting occupancy: WiFi appears as broad humps roughly 20 MHz wide centred
+on 2412, 2437 and 2462 MHz. A narrow 1–2 MHz spike with quiet neighbours is
+interesting; a broad hump is not. Note also that the power detector only trips
+above about −64 dBm, so work within a couple of metres, and that nRF24 channels
+above 83 (2483 MHz) are outside the ISM band, where certified products won't be.
+
+### Analysing captures
+
+Save `sniff` output to a file, then run the analyser — a .NET 10 file-based app,
+so no project scaffolding is needed:
+
+```sh
+dotnet run tools/rf-analyse.cs docs/captures/rf-captures-2026-07-28-two-guns-firing.txt
+```
+
+It reports, per channel and rate, how many captures survive CRC validation as
+Enhanced ShockBurst packets (trying address widths 3–5), and ranks recurring
+byte sequences as candidate addresses. Sequences like `AAAAAAAAAA` or
+`A0A0A0A0A0` are alternating-bit noise, not addresses — promiscuous capture is
+roughly nineteen parts noise to one part signal, so a low yield is normal and a
+**zero** yield is the meaningful result.
+
+The parsing, CRC16, bit realignment, packet validation and address recovery live
+in **`dotnet/LaserTag.Rf`** (16 xUnit tests, including a round trip that builds
+an ESB packet, bit-shifts it and recovers it), so any new tool can reuse them.
+
+### Limits worth knowing before trusting a negative
+
+The nRF24 can only decode nRF24-compatible traffic. **XN297 and BK2425** — both
+common in toys — look similar but scramble the preamble and are not
+bit-compatible, so they read as silence. Silence is therefore never proof of
+absence on its own; it has to be combined with evidence about what the target
+actually contains.
+
 ## set-wifi.ps1
 
 Provisions WiFi credentials on a board over serial (TagNet stores them in NVS,

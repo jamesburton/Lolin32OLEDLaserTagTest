@@ -8,7 +8,13 @@ Codes & features behind interfaces so other guns/protocols and boards plug in.
 
 ## Current State
 
-### RF (2.4 GHz) sub-project PAUSED — tooling complete, no signal found (2026-07-28)
+### RF (2.4 GHz) sub-project CLOSED — no signal found; these units stay on IR (2026-07-28)
+**Decision: integrate these guns over IR only** (`docs/gun-protocol.md`, already
+working). Do not spend more time hunting RF on this kit unless a labelled or
+vest-bundled unit turns up. Tool usage is documented in `tools/README.md`
+("RF probe"); the probe and analysis pipeline are ready to take a capture the
+same evening if the question ever reopens.
+
 Spec: `docs/superpowers/specs/2026-07-28-rf-protocol-analysis-design.md`; plan:
 `docs/superpowers/plans/2026-07-28-rf-protocol-analysis.md`; findings:
 `docs/rf-protocol.md`. Commits `bc33611`, `958abc2`, `d496679`, `befdc4d`,
@@ -464,6 +470,9 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   (+post-impl notes), `docs/superpowers/plans/2026-07-12-game-manager.md`.
 
 ## Next Steps
+**RF is closed** — these guns are IR-only as far as this project is concerned;
+see the RF section above before reopening it.
+
 **Immediately actionable:** (a) **power + OTA boards 1+2** (fleet table above)
 so the whole fleet enforces `id=`; (b) **eyeball the chase visuals** on boards
 3+4 — spin colour, dim scoreboard, countdown blink, gameover hold (host-side
