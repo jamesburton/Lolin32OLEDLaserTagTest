@@ -67,6 +67,28 @@ Lesson worth keeping: an occupancy metric must be normalised by sample count
 before any A/B comparison, and a candidate found by sweeping must be confirmed
 by dwelling on it. Both retractions came from that second step.
 
+### Power-cycle / pairing test (confirmed negative)
+
+Hypothesis: the kit may choose a channel at pairing, so power-cycling would move
+it and defeat fixed-channel tests. Tested by aggregating four full-band sweeps
+(120 ms/channel, 960 samples/channel total) while a gun was repeatedly switched
+off and on with a shot fired in between, since the team is not locked until the
+first shot.
+
+Top channels were 2411 (23.8%), 2435 (23.2%), 2465 (21.7%), 2436 (19.4%) and
+2434 MHz (19.2%) — broad humps centred on WiFi channels 1, 6 and 11. **No narrow
+isolated carrier appeared anywhere.** Hopping changes which channel is used, not
+the narrowness of the carrier, so a hopping radio would still have shown a
+1-2 MHz spike somewhere across four sweeps. It did not.
+
+### Is this model even RF-equipped?
+
+Worth resolving before any further RF work: the "2.4GHz Data SYNC" claim comes
+from **vendor listings for Vatos sets with LCD-equipped vests**, not from this
+unit. If these guns are an IR-only model, every observation above is explained
+at once and there is no protocol to find. Check the model number on the box or
+manual, and look inside for a radio module and antenna trace.
+
 ### Why this may still be a false negative
 
 1. **No vest.** The vendor describes the 2.4 GHz link as gun-to-vest data sync.
