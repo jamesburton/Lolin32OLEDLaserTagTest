@@ -110,6 +110,93 @@ void commandScan(uint16_t sweeps)
                          "This is NOT proof of silence: move within a couple of metres and retry."));
     }
 }
+
+/**
+ * Samples the RPD on one channel for a while, re-arming after each trip.
+ *
+ * The RPD latches, so detecting a *second* burst needs CE toggled low/high to
+ * re-arm the measurement. Returns how many trips were seen.
+ */
+uint16_t sampleChannel(uint8_t channel, uint16_t durationMs)
+{
+    radio.ceLow();
+    radio.writeReg(Nrf24Raw::kRfCh, channel);
+    radio.ceHigh();
+    delayMicroseconds(200); // PLL settle before the first sample counts.
+
+    uint16_t trips = 0;
+    uint32_t deadline = millis() + durationMs;
+    while (static_cast<int32_t>(millis() - deadline) < 0)
+    {
+        if (radio.readReg(Nrf24Raw::kRpd) & 0x01)
+        {
+            ++trips;
+            radio.ceLow(); // Re-arm: the RPD latch clears on the next measurement.
+            radio.ceHigh();
+            delayMicroseconds(150);
+        }
+
+        yield();
+    }
+
+    radio.ceLow();
+    return trips;
+}
+
+/**
+ * Dwells on each channel in a range instead of sweeping past it.
+ *
+ * A full sweep listens to any one channel for ~0.3% of the time, so a short
+ * burst fired on a trigger pull is almost certain to be missed. Dwelling trades
+ * coverage for sensitivity, which is the right trade once a suspect range is
+ * known.
+ */
+void commandWatch(uint8_t from, uint8_t to, uint16_t msPerChannel)
+{
+    configureForScan();
+    Serial.printf("WATCH start from=%u to=%u ms=%u\n", from, to, msPerChannel);
+    for (uint8_t ch = from; ch <= to; ++ch)
+    {
+        uint16_t trips = sampleChannel(ch, msPerChannel);
+        if (trips > 0)
+        {
+            Serial.printf("WATCH ch=%u mhz=%u trips=%u\n", ch, 2400u + ch, trips);
+        }
+
+        if (ch == 125)
+        {
+            break; // Guard against uint8_t wrap when to == 125.
+        }
+    }
+
+    Serial.println(F("WATCH done"));
+}
+
+/**
+ * Camps on one channel and reports activity in 100ms buckets.
+ *
+ * Bucketed output is what makes trigger-pull correlation possible: a burst that
+ * coincides with each shot shows up as isolated non-zero buckets, which ambient
+ * WiFi does not produce.
+ */
+void commandDwell(uint8_t channel, uint16_t seconds)
+{
+    configureForScan();
+    Serial.printf("DWELL start ch=%u mhz=%u secs=%u - fire now\n", channel, 2400u + channel, seconds);
+    uint16_t buckets = seconds * 10;
+    uint16_t total = 0;
+    for (uint16_t i = 0; i < buckets; ++i)
+    {
+        uint16_t trips = sampleChannel(channel, 100);
+        total += trips;
+        if (trips > 0)
+        {
+            Serial.printf("DWELL t=%ums trips=%u\n", i * 100u, trips);
+        }
+    }
+
+    Serial.printf("DWELL done ch=%u total=%u buckets=%u\n", channel, total, buckets);
+}
 }
 
 void setup()
@@ -117,7 +204,7 @@ void setup()
     Serial.begin(115200);
     delay(200);
     radio.begin(kCePin, kCsnPin);
-    Serial.println(F("RF probe ready - commands: selftest, scan [sweeps]"));
+    Serial.println(F("RF probe ready - commands: selftest, scan [sweeps], watch from= to= ms=, dwell ch= secs="));
 }
 
 void loop()
@@ -138,8 +225,40 @@ void loop()
         long sweeps = line.length() > 5 ? line.substring(5).toInt() : 0;
         commandScan(sweeps > 0 ? static_cast<uint16_t>(sweeps) : 20);
     }
+    else if (line.startsWith("watch"))
+    {
+        int fromAt = line.indexOf("from=");
+        int toAt = line.indexOf("to=");
+        int msAt = line.indexOf("ms=");
+        long from = fromAt >= 0 ? line.substring(fromAt + 5).toInt() : 0;
+        long to = toAt >= 0 ? line.substring(toAt + 3).toInt() : 125;
+        long ms = msAt >= 0 ? line.substring(msAt + 3).toInt() : 200;
+        if (from < 0 || to > 125 || from > to || ms < 1)
+        {
+            Serial.println(F("usage: watch from=<0-125> to=<0-125> ms=<per channel>"));
+        }
+        else
+        {
+            commandWatch(static_cast<uint8_t>(from), static_cast<uint8_t>(to), static_cast<uint16_t>(ms));
+        }
+    }
+    else if (line.startsWith("dwell"))
+    {
+        int chAt = line.indexOf("ch=");
+        int secsAt = line.indexOf("secs=");
+        long ch = chAt >= 0 ? line.substring(chAt + 3).toInt() : -1;
+        long secs = secsAt >= 0 ? line.substring(secsAt + 5).toInt() : 10;
+        if (ch < 0 || ch > 125 || secs < 1)
+        {
+            Serial.println(F("usage: dwell ch=<0-125> secs=<n>"));
+        }
+        else
+        {
+            commandDwell(static_cast<uint8_t>(ch), static_cast<uint16_t>(secs));
+        }
+    }
     else if (line.length() > 0)
     {
-        Serial.println(F("unknown command - try: selftest, scan [sweeps]"));
+        Serial.println(F("unknown command - try: selftest, scan [sweeps], watch from= to= ms=, dwell ch= secs="));
     }
 }
