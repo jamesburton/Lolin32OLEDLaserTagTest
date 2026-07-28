@@ -6,7 +6,7 @@
 
 **Architecture:** A register-level nRF24 driver (`lib/Nrf24Raw`) runs under a serial-command probe firmware (`src/rf_probe.cpp`) that emits `SCAN`/`RF` lines in the existing firmware line-protocol style. A pure .NET library (`LaserTag.Rf`) parses those lines and does the offline work — bit-shift realignment, CRC16 validation, address recovery — with an interactive capture app (`tools/RfTrainer`) on top for labelled captures.
 
-**Tech Stack:** PlatformIO / Arduino (espressif8266, `nodemcuv2`), C++17, Unity native tests, .NET 9, xUnit, Spectre.Console.
+**Tech Stack:** PlatformIO / Arduino (espressif8266, `nodemcuv2`), C++17, Unity native tests, .NET 10, xUnit, Spectre.Console.
 
 ## Global Constraints
 
@@ -14,6 +14,8 @@
 - Target hardware is the user's own kit only. (Spec §8.)
 - Probe wiring is fixed: CE=GPIO4, CSN=GPIO5, SCK=GPIO14, MOSI=GPIO13, MISO=GPIO12, IRQ unconnected, VCC=3V3. Never GPIO15/GPIO2 for CE or CSN — boot-strapping pins. (Spec §3.)
 - The RPD threshold is approximately −64 dBm: all capture work happens within a few metres of the kit. (Spec §4.)
+- All .NET projects target **net10.0**, matching the rest of the solution. Ad-hoc analysis can use .NET 10 file-based apps (`dotnet run foo.cs` with a `#:project` directive) rather than scaffolding throwaway projects.
+- Occupancy figures must be normalised by sample count before any A/B comparison, and any candidate found by sweeping must be confirmed by dwelling on it. Both retracted candidates on 2026-07-28 came from skipping that second step.
 - Do not use the RF24 Arduino library — it clamps address width to 3–5 bytes and cannot express the 2-byte promiscuous trick. (Spec §5.)
 - Failure must be specific, never silent: an empty scan reports "no channel exceeded the RPD threshold", not "no traffic". (Spec §6.)
 - `lib/Nrf24Raw` must not depend on ESP8266-specific headers beyond `SPI.h`/`Arduino.h`, so it ports to the ESP32 boards unchanged. (Spec §3.)
@@ -702,8 +704,8 @@ git commit -m "feat(rf): promiscuous capture command (2-byte address, CRC off)"
 
 ```bash
 cd dotnet
-dotnet new classlib -n LaserTag.Rf -f net9.0
-dotnet new xunit -n LaserTag.Rf.Tests -f net9.0
+dotnet new classlib -n LaserTag.Rf -f net10.0
+dotnet new xunit -n LaserTag.Rf.Tests -f net10.0
 dotnet add LaserTag.Rf.Tests reference LaserTag.Rf
 dotnet sln LaserTag.sln add LaserTag.Rf LaserTag.Rf.Tests
 rm LaserTag.Rf/Class1.cs LaserTag.Rf.Tests/UnitTest1.cs
@@ -1431,7 +1433,7 @@ git commit -m "feat(rf): bit realignment, address recovery, ESB packet validatio
 - [ ] **Step 1: Create the project**
 
 ```bash
-dotnet new console -n RfTrainer -o tools/RfTrainer -f net9.0
+dotnet new console -n RfTrainer -o tools/RfTrainer -f net10.0
 dotnet add tools/RfTrainer reference dotnet/LaserTag.Rf
 dotnet add tools/RfTrainer package System.IO.Ports
 dotnet add tools/RfTrainer package Spectre.Console

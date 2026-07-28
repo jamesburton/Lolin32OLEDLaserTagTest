@@ -36,6 +36,77 @@ SELFTEST ok - radio is responding
 `config=0x08` is the power-on default (EN_CRC set, PWR_UP clear), which is what
 a healthy, idle radio should report.
 
+## Result so far: the kit was NOT detected on air
+
+Across a full evening of measurements with one gun and with two guns firing at
+each other, **no signal attributable to the kit was found**. Three candidate
+channels appeared and all three failed verification. This is a negative result,
+not a null one: the reasons it might be a false negative are listed below, and
+they are worth more than the measurements.
+
+### Candidates raised and retracted
+
+| Candidate | Why it looked real | Why it failed |
+| --------- | ------------------ | ------------- |
+| 2446 & 2407 MHz | ~147 "trips" firing vs 2-3 with the gun off | Measured with an uncalibrated counter (see below). A dwell control on the same idle channel disagreed by ~100x. Artefact. |
+| 2411 MHz | 56% occupancy firing vs 9% control; neighbour 2412 at 4%, too narrow for WiFi | Camping on it showed a flat ~13-15% floor in every 100 ms bucket with no trigger correlation, and 17% overall minutes later. The 56% was a passing WiFi burst. |
+| 2464 MHz | 37% with two guns firing, neighbours at 0-2% — a 1 MHz spike, impossible for 20 MHz-wide WiFi | Dwelling on it during firing gave **7%, below its own 10% idle floor**. The sweep's 37% was one transient burst caught during that channel's 150 ms visit. |
+
+### Instrument bug found and fixed (important)
+
+The first `watch`/`dwell` implementation counted every SPI poll where the power
+detector read high. That count scales with how fast the polling loop spins and
+how often it re-arms, **not** with airtime, so figures from different commands
+were never comparable and the first two candidates above were manufactured by
+the measurement itself. Fixed by sampling on a fixed 500 µs cadence and
+reporting `high/samples` as a percentage (commit `9d72355`). Every number in
+this document from the 2411 MHz candidate onward uses the calibrated metric;
+treat any earlier "trips" figure as meaningless.
+
+Lesson worth keeping: an occupancy metric must be normalised by sample count
+before any A/B comparison, and a candidate found by sweeping must be confirmed
+by dwelling on it. Both retractions came from that second step.
+
+### Why this may still be a false negative
+
+1. **No vest.** The vendor describes the 2.4 GHz link as gun-to-vest data sync.
+   With no vest in the house, the guns may have had nothing to sync with. Two
+   guns firing at each other did not change the picture, but gun-to-gun sync is
+   an assumption, not a documented behaviour.
+2. **Power-on pairing not tested.** A gun with no partner most plausibly
+   transmits at switch-on and then goes quiet. The planned test — repeated
+   power-cycling during a sweep, so bursts accumulate — was not run.
+3. **The chipset is still unidentified.** If it is XN297 or BK2425, this radio
+   cannot decode it and would show exactly what we saw. See Phase 0 below.
+4. **Energy detection is weak by nature.** The RPD reports only that power
+   exceeded ~−64 dBm. Within the WiFi band, household traffic swings by more
+   than the effect we are hunting, which is what defeated every candidate.
+
+### Promiscuous capture: zero valid packets (confirmed)
+
+With **two guns firing at each other**, 2901 promiscuous captures were recorded
+and run through `LaserTag.Rf`:
+
+| Channel | 1 Mbps | 2 Mbps |
+| ------- | ------ | ------ |
+| 2402 MHz (ch 2) | 369 captures, **0 CRC-valid** | 946 captures, **0 CRC-valid** |
+| 2464 MHz (ch 64) | 142 captures, **0 CRC-valid** | 537 captures, **0 CRC-valid** |
+| 2476 MHz (ch 76) | 228 captures, **0 CRC-valid** | 679 captures, **0 CRC-valid** |
+
+Every address width from 3 to 5 bytes was tried on every capture. The most
+frequent recurring 5-byte sequences were `AAAAAAAAAA` (105), `A0A0A0A0A0` (37)
+and `2828282828` (33) — alternating-bit noise patterns, not addresses.
+
+This is much stronger than the occupancy work: the validator is unit-tested
+against a synthetic ESB packet it can build, bit-shift and recover, so a real
+nRF24 packet on those channels at those rates would have been found.
+
+Scope of the claim: 3 of 126 channels at 2 of 3 data rates. It does **not**
+prove the kit is silent — 250 kbps was untested and 123 channels were not
+swept — but combined with every energy candidate failing, it materially
+increases the odds that the kit is either not nRF24-compatible or not
+transmitting without a vest.
+
 ## Baseline scan — Vatos kit OFF (confirmed)
 
 `scan 30`, 2026-07-28, 30 sweeps of all 126 channels reading the RPD
