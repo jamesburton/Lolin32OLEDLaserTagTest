@@ -505,6 +505,15 @@ stay within one frame). Each completed frame is:
 The optional decoded line is printed **before** the `FRAME` line so a consumer
 can attach it to the frame that terminates the event.
 
+> **Verified board-to-board (2026-07-29):** an IR-TX-equipped board firing at
+> another decodes exactly — all four damage values cost exactly their damage,
+> and all four shooter teams arrive correctly in `EVT hit shooterTeam=`.
+> Two things to know when testing: range is very short on a raw GPIO drive
+> (aim the boards at each other, close), and **shots arriving during the
+> post-hit flash/stun window are ignored by design** (`applyHit` runs only in
+> the rainbow idle state), so space test shots ~4 s apart — a rapid burst
+> looks like a fault but isn't.
+
 ### Transmit path
 
 `Vatos::encode()` builds the 41-symbol bit pattern for a `{team, damage}` shot

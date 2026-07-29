@@ -31,21 +31,27 @@ whatever board receives it.
 - **Verified live: 25/26** — assign-to-neutral, heartbeat mirroring, 2v2 split,
   and device-side rejection of `5`/`-1`/`"red"` with the team surviving intact.
 
-### ⚠ IR board-to-board is NOT working — new, unexplained (2026-07-29)
-Swept **every board as shooter** (8 shots, damage 4, hp checked on all four):
-**nothing registered anywhere, in any direction, including self-loopback** —
-which the handoff records as previously working on board 1. Then enabled raw
-frame debug (`{"cmd":"debug","value":1}`) on all four and fired 10 more: the
-telemetry stream carried **only heartbeats, no IR frames at all**, not even
-undecodable ones. So no receiver is seeing *any* IR energy — this is an
-emit-or-alignment problem, not a decode problem.
-**`fire` returning `ok:true` proves nothing** — `IrTx::present()` is driven by
-the compile-time BoardProfile, so every S3 board accepts `fire` whether or not
-an LED is physically attached. Only the prototype board (currently `eb278c`)
-has one wired, in raw-drive mode (no 2N2222A), so its range is very short.
-**Next: aim the prototype board's IR LED directly at another board a few cm
-away and re-run** `scratchpad/ir-sweep.ps1`-style bursts; if still silent,
-suspect the LED/pin wiring rather than range.
+### ✅ IR board-to-board VERIFIED — first time ever (2026-07-29)
+The largest untested path in the project is now exercised end to end. The
+prototype board (`eb278c`, raw-drive IR TX, no 2N2222A) fires; `eb20f8`
+receives, decodes and scores.
+- **Damage fidelity exact** for all four Vatos damage values: a dmg-N shot
+  costs exactly N hp (1->31, 2->30, 3->29, 4->28 from startHp 32).
+- **Team fidelity exact** for all four teams, confirmed in the telemetry
+  itself, not just inferred from hp:
+  `EVT hit victim=eb20f8 shooterTeam=1..4 dmg=1 proto=vatos hp=31`.
+- **Only the prototype board can transmit.** A sweep with every board as
+  shooter landed hits *only* from `eb278c`; the three PCB boards registered
+  nothing in any direction. Their carrier has the 2N2222A driver footprint but
+  no IR LED fitted yet, and `fire` returns `ok:true` on all of them regardless
+  — `IrTx::present()` comes from the compile-time BoardProfile, so it is NOT
+  evidence an emitter exists.
+- **Range is very short** (raw GPIO drive, no transistor): boards must be
+  aimed at close range. It took an aim adjustment to get the first hit.
+- **Rapid fire is dropped BY DESIGN, not lost.** `applyHit` runs only while
+  `vis == Vis::Rainbow`, so shots arriving during the post-hit flash/stun
+  window are ignored — a 600 ms burst of 10 shots landed 4. Space shots ~4 s
+  apart when measuring, or the miss rate looks like an RF/alignment fault.
 
 ### FLEET ON 2.1.0 + first 4-board integration test PASSED (2026-07-29)
 First session with **all four S3 boards powered at once**. Boards 1 (`752b38`)
@@ -651,10 +657,11 @@ the chase visuals** on the fleet — spin colour, dim scoreboard, countdown
 blink, gameover hold (host-side logic is bench-verified; the LEDs aren't). This
 now also covers **activate/deactivate**, which the 2026-07-29 test could not
 confirm remotely (it only changes `vis`). (c) **exercise the dormant-penalty
-IR path** with a real gun or an IR-TX-equipped board firing at a dormant one —
-still the largest untested firmware path, and note the 2026-07-29 test showed
-**no IR hit path has ever been exercised board-to-board** (a `fire` registered
-on nothing; alignment untested). (d) audition the quack
+IR path** — now genuinely reachable: board-to-board IR is VERIFIED (see Current
+State), so aim `eb278c` at a dormant chase board and confirm the
+`EVT hit … dormant=1` penalty path. Fit IR LEDs to the PCB carriers (2N2222A
+footprint present, no emitter yet) so any board can shoot, not just the
+prototype. (d) audition the quack
 (`assets/sfx/quack-attack-3s.wav` → card as `/sfx/test.wav`, `sdplay`);
 (e) run the APK on a real phone (see Managers above). Remaining Spec B
 leftovers: OLED-shows-health + configurable sound paths (8b); Spec C leftover:
