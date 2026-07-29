@@ -19,6 +19,33 @@ size_t sdList(const char *path, void (*onEntry)(const char *name));
 /// (not mounted, not found, read error) -- logs the reason via Serial.
 uint8_t *sdReadFile(const char *path, size_t &len);
 
+/// Result of a raw SPI-level card probe.
+struct SdProbe {
+  bool responded;   ///< True if the card answered CMD0 at all.
+  uint8_t r1;       ///< CMD0 response byte (0x01 = idle, the expected value).
+  uint8_t cmd8[5];  ///< CMD8 R7 response (only valid when responded).
+  bool cmd8Ok;      ///< True if CMD8 echoed the 0x1AA check pattern.
+};
+
+/// <summary>
+/// Talks to the card directly over SPI, bypassing the SD library entirely.
+/// </summary>
+/// <param name="csPin">Chip select.</param>
+/// <param name="mosiPin">MOSI.</param>
+/// <param name="misoPin">MISO.</param>
+/// <param name="sckPin">SCK.</param>
+/// <returns>What the card said.</returns>
+/// <remarks>
+/// Diagnostic of last resort. The Arduino SD library reports mount failures
+/// only through log_e(), which writes to Serial and cannot be captured on a
+/// headless board — so a failing mount is otherwise a silent "no". This runs
+/// the documented SD SPI init handshake (74 idle clocks, CMD0, CMD8) and
+/// reports the raw bytes, which separates the two possibilities cleanly:
+/// no response at all means power/wiring/CS, while a valid idle response
+/// means the card is alive and the fault is above the bus.
+/// </remarks>
+SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin);
+
 /// True when a card is currently mounted.
 bool sdMounted();
 

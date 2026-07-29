@@ -47,6 +47,69 @@ bool sdBegin(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin) {
 
 uint32_t sdMountHz() { return mountHz; }
 
+namespace {
+// Sends one 6-byte SD command and returns the first non-0xFF response byte.
+// 0xFF means the card never answered within the allowed poll window.
+uint8_t sdCommand(uint8_t cmd, uint32_t arg, uint8_t crc) {
+  SPI.transfer(0x40 | cmd);
+  SPI.transfer((uint8_t)(arg >> 24));
+  SPI.transfer((uint8_t)(arg >> 16));
+  SPI.transfer((uint8_t)(arg >> 8));
+  SPI.transfer((uint8_t)arg);
+  SPI.transfer(crc);
+  // The card may take up to 8 bytes to respond (spec allows NCR of 0-8).
+  for (int i = 0; i < 10; i++) {
+    const uint8_t r = SPI.transfer(0xFF);
+    if (r != 0xFF) {
+      return r;
+    }
+  }
+  return 0xFF;
+}
+} // namespace
+
+SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin) {
+  SdProbe out{};
+  out.responded = false;
+  out.r1 = 0xFF;
+  out.cmd8Ok = false;
+
+  SPI.end();
+  SPI.begin(sckPin, misoPin, mosiPin, csPin);
+  pinMode(csPin, OUTPUT);
+  digitalWrite(csPin, HIGH);
+
+  // Init must happen at 100-400 kHz; the card only accepts a faster clock
+  // after it has left idle.
+  SPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+
+  // >= 74 clocks with CS high and MOSI high puts the card into native SPI mode.
+  for (int i = 0; i < 12; i++) {
+    SPI.transfer(0xFF);
+  }
+
+  digitalWrite(csPin, LOW);
+  // CMD0 GO_IDLE_STATE. CRC is fixed (0x95) and mandatory for this one command.
+  out.r1 = sdCommand(0, 0, 0x95);
+  out.responded = out.r1 != 0xFF;
+
+  if (out.responded) {
+    // CMD8 SEND_IF_COND: ask for 2.7-3.6 V with check pattern 0xAA. An SDv2
+    // card echoes both back in the trailing 4 bytes of its R7 response.
+    const uint8_t r = sdCommand(8, 0x000001AA, 0x87);
+    out.cmd8[0] = r;
+    for (int i = 0; i < 4; i++) {
+      out.cmd8[i + 1] = SPI.transfer(0xFF);
+    }
+    out.cmd8Ok = (out.cmd8[3] == 0x01) && (out.cmd8[4] == 0xAA);
+  }
+
+  digitalWrite(csPin, HIGH);
+  SPI.transfer(0xFF); // trailing clocks so the card releases the bus
+  SPI.endTransaction();
+  return out;
+}
+
 size_t sdList(const char *path, void (*onEntry)(const char *name)) {
   if (!mounted) {
     Serial.println("[sd] list: not mounted");

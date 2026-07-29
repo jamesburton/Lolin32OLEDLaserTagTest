@@ -3,6 +3,7 @@
 
 #if defined(ESP32)
 #include "driver/i2s.h"
+#include "esp_task_wdt.h"
 // The embedded explosion bank is large (~130 KB) and only the I2S-DAC board
 // can use it, so pull it in only for that target. Other ESP32 boards keep just
 // the procedural synth burst (index 0).
@@ -70,6 +71,13 @@ static void playPcm(const int16_t *data, size_t samples) {
     size_t written;
     i2s_write(kPort, chunk, n * sizeof(int16_t), &written, portMAX_DELAY);
     i += n;
+
+    // Feed the task watchdog. i2s_write blocks on the DMA queue, which yields
+    // to the scheduler but never resets the loop task's WDT — so a clip longer
+    // than the watchdog window used to reboot the board mid-playback. That is
+    // why clips were previously capped at ~3 s. Resetting here removes the
+    // length limit; a 10 s clip now plays in full.
+    esp_task_wdt_reset();
   }
   // i2s_write returns once samples are queued, not drained. Wait out the DMA
   // (4 x 64 frames @ 16 kHz ~= 16 ms) before stopping so the tail isn't cut.

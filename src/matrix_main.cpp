@@ -25,6 +25,8 @@
 #include <Update.h>
 #include <WiFi.h>
 #include <driver/gpio.h>
+#include <esp_log.h>
+#include <stdarg.h>
 
 #include <BoardProfile.h>
 #include <BoardNvs.h>
@@ -137,6 +139,42 @@ Board::BoardProfile activeProfile;
 
 // Mounts the card on demand; defined with the SD REST handlers below.
 bool sdReady();
+
+// --- Remote log forwarding (SD diagnosis) -----------------------------------
+//
+// When set, ESP-IDF log output is broadcast over UDP as well as Serial. These
+// boards run headless, so a driver-level failure is otherwise invisible.
+// Enabled only around an explicit `sdtest`, never continuously.
+bool sdLogForward = false;
+
+// esp_log hook. Must be reentrancy-guarded: broadcasting a line goes through
+// the WiFi stack, which itself logs at verbose level — without the guard the
+// first forwarded line would recurse until the stack blew.
+int udpLogVprintf(const char *fmt, va_list args) {
+  static bool inHook = false;
+  const int written = vprintf(fmt, args); // always keep Serial behaviour
+  if (!sdLogForward || inHook) {
+    return written;
+  }
+  inHook = true;
+  char buf[192];
+  va_list copy;
+  va_copy(copy, args);
+  vsnprintf(buf, sizeof(buf), fmt, copy);
+  va_end(copy);
+  // Trim the trailing newline: TagNet::event sends one line per datagram.
+  for (char *p = buf; *p; p++) {
+    if (*p == '\n' || *p == '\r') {
+      *p = '\0';
+      break;
+    }
+  }
+  if (buf[0] != '\0') {
+    TagNet::event(buf);
+  }
+  inHook = false;
+  return written;
+}
 
 // Plays a WAV from the microSD by path. Shared by the `play` command and the
 // boot startup cue so both validate, parse and free identically.
@@ -568,6 +606,38 @@ void onLine(const char *line) {
     } else {
       Serial.println("usage: mult | mult <1-32> | mult <team 1-4> <0-32>");
     }
+  } else if (strcmp(line, "sdtest") == 0) {
+    // Remote SD diagnosis: forward the ESP-IDF driver's own log output over
+    // UDP for the duration of one mount attempt, then switch it off again.
+    // These boards have no serial attached in normal use, so without this the
+    // only visible symptom is "not mounted" with no reason. Scoping the
+    // forwarding to the single call keeps the WiFi driver's own verbose
+    // chatter off the wire.
+    sdLogForward = true;
+    TagNet::event("SDTEST begin");
+    const bool ok =
+        Storage::sdBegin(activeProfile.sdCsPin, activeProfile.sdMosiPin,
+                         activeProfile.sdMisoPin, activeProfile.sdSckPin);
+    char msg[96];
+    snprintf(msg, sizeof(msg), "SDTEST result=%s hz=%lu", ok ? "MOUNTED" : "FAILED",
+             (unsigned long)Storage::sdMountHz());
+    TagNet::event(msg);
+    sdLogForward = false;
+  } else if (strcmp(line, "sdprobe") == 0) {
+    // Raw SPI handshake with the card, bypassing the SD library. Reports the
+    // bytes over UDP so a headless board can be diagnosed.
+    Storage::SdProbe p =
+        Storage::sdProbeRaw(activeProfile.sdCsPin, activeProfile.sdMosiPin,
+                            activeProfile.sdMisoPin, activeProfile.sdSckPin);
+    char msg[160];
+    snprintf(msg, sizeof(msg),
+             "SDPROBE responded=%d r1=0x%02X cmd8=%02X%02X%02X%02X%02X v2=%d "
+             "pins=cs%d,mosi%d,miso%d,sck%d",
+             p.responded ? 1 : 0, p.r1, p.cmd8[0], p.cmd8[1], p.cmd8[2],
+             p.cmd8[3], p.cmd8[4], p.cmd8Ok ? 1 : 0, (int)activeProfile.sdCsPin,
+             (int)activeProfile.sdMosiPin, (int)activeProfile.sdMisoPin,
+             (int)activeProfile.sdSckPin);
+    TagNet::event(msg);
   } else if (strcmp(line, "sdplay") == 0) {
     // Spike bench helper: mount the card, list /sfx/, and play one .wav
     // through the existing I2S path. Bypasses game state entirely.
@@ -1125,6 +1195,7 @@ void setup() {
   hp = config.startHp; // adopt the configured starting health
   HitDisplay::setBrightness(config.brightness);
 
+  esp_log_set_vprintf(udpLogVprintf); // enables `sdtest`'s remote log capture
   TagNet::onLine(onLine);             // CTL + legacy bright/hit/debug
   TagNet::onStatus(matrixStatus);     // HTTP "/" status
   TagNet::onHttpSetup(registerRoutes); // /api/* REST routes
