@@ -26,11 +26,26 @@ else
                 </div>
                 <dl>
                     <div><dt>IP</dt><dd>@entry.LastHeartbeat.Ip</dd></div>
-                    <div><dt>Team</dt><dd>@entry.LastHeartbeat.Team</dd></div>
+                    <div><dt>Team</dt><dd>@Teams.Describe(entry.LastHeartbeat.Team)</dd></div>
                     <div><dt>HP</dt><dd>@entry.LastHeartbeat.Hp</dd></div>
                     <div><dt>Firmware</dt><dd>@entry.LastHeartbeat.Fw</dd></div>
                     <div><dt>State</dt><dd>@(entry.Online ? "online" : "offline")</dd></div>
                 </dl>
+                <div class="row team-row">
+                    <span class="muted">Team</span>
+                    @foreach (int team in TeamChoices)
+                    {
+                        <button class="btn team-btn team-@team @(entry.LastHeartbeat.Team == team ? "sel" : "")"
+                                disabled="@(_busy == entry.Id)"
+                                @onclick="() => SetTeam(entry.Id, team)">
+                            @Teams.Describe(team)
+                        </button>
+                    }
+                </div>
+                @if (_error is not null && _errorId == entry.Id)
+                {
+                    <p class="error">@_error</p>
+                }
                 <div class="row">
                     <button class="btn" @onclick="() => Identify(entry.Id)">Identify</button>
                     <button class="btn" @onclick="() => Send(ControlKind.Reset, entry.Id)">Reset</button>
@@ -43,6 +58,44 @@ else
 }
 
 @code {
+    /// <summary>Assignable teams: neutral first, then the four sides.</summary>
+    private static readonly int[] TeamChoices = [Teams.None, 1, 2, 3, 4];
+
+    private string? _busy;
+    private string? _error;
+    private string? _errorId;
+
+    /// <summary>
+    /// Assigns a board's team.
+    /// </summary>
+    /// <param name="id">The device id.</param>
+    /// <param name="team">The team, where 0 is neutral.</param>
+    /// <remarks>
+    /// This is a REST round-trip to the board (teams live in its persisted
+    /// config, not the control plane), so it can fail and it can be slow —
+    /// hence the per-card busy flag and inline error rather than a silent
+    /// no-op. The displayed team updates when the next heartbeat lands.
+    /// </remarks>
+    private async Task SetTeam(string id, int team)
+    {
+        _busy = id;
+        _error = null;
+        _errorId = null;
+        try
+        {
+            string? error = await Session.SetTeamAsync(id, team);
+            if (error is not null)
+            {
+                _error = error;
+                _errorId = id;
+            }
+        }
+        finally
+        {
+            _busy = null;
+        }
+    }
+
     /// <summary>Sends a targeted control verb to one board.</summary>
     /// <param name="kind">The verb.</param>
     /// <param name="id">The device id, used as the CTL id= filter.</param>

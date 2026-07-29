@@ -51,6 +51,10 @@ public sealed class LocalGameSession(GameService game, UdpTelemetryService telem
     public void SendControl(Control control) => game.SendControl(control);
 
     /// <inheritdoc/>
+    public Task<string?> SetTeamAsync(string deviceId, int team) =>
+        game.SetTeamAsync(deviceId, team);
+
+    /// <inheritdoc/>
     public void Dispose()
     {
     }

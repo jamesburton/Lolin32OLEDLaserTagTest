@@ -21,6 +21,7 @@ public sealed class GameService
     private readonly Dictionary<string, bool> _lastOnline = new(StringComparer.Ordinal);
     private readonly Dictionary<int, int> _pushedScores = [];
     private readonly LinkedList<string> _recentEvents = new();
+    private readonly TeamAssigner _assigner = new();
     private DateTimeOffset _lastScorePushAt = DateTimeOffset.MinValue;
     private bool _finalScoresPushed;
 
@@ -235,4 +236,51 @@ public sealed class GameService
     /// <summary>Sends an ad-hoc control message (reset/activate/deactivate verbs).</summary>
     /// <param name="control">The control to send.</param>
     public void SendControl(Control control) => _ = _sender.SendAsync(control);
+
+    /// <summary>
+    /// Assigns one device's team by patching its persisted config over REST.
+    /// </summary>
+    /// <param name="deviceId">The device id from the roster.</param>
+    /// <param name="team">The team (0 = neutral, 1..4 = a side).</param>
+    /// <param name="cancellationToken">A token to cancel the request.</param>
+    /// <returns>An error message, or <see langword="null"/> on success.</returns>
+    /// <remarks>
+    /// A change made mid-match does NOT move the player: the lobby snapshots
+    /// each participant's team at start, so the new team applies from the next
+    /// match. That is deliberate — reassigning sides mid-round would silently
+    /// rewrite who the existing scores belonged to.
+    /// </remarks>
+    public async Task<string?> SetTeamAsync(
+        string deviceId,
+        int team,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Teams.IsValid(team))
+        {
+            return $"team must be 0-4 (0 = none), got {team}";
+        }
+
+        string? ip;
+        lock (_gate)
+        {
+            ip = _roster.GetAll().FirstOrDefault(e => e.Id == deviceId)?.LastHeartbeat.Ip;
+        }
+
+        if (ip is null)
+        {
+            return $"no device with id {deviceId}";
+        }
+
+        TeamAssigner.Result result = await _assigner.AssignAsync(ip, team, cancellationToken)
+            .ConfigureAwait(false);
+        if (!result.Ok)
+        {
+            return result.Error;
+        }
+
+        // The roster's team mirror refreshes from the next heartbeat (~2 s);
+        // nudge the UI now so the change does not look like it was ignored.
+        StateChanged?.Invoke();
+        return null;
+    }
 }

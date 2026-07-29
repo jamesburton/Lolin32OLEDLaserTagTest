@@ -98,4 +98,32 @@ public class ApiEndpointTests : IClassFixture<LaserTagWebFactory>
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(5)]
+    public async Task PostTeam_WithOutOfRangeTeam_ReturnsBadRequest_WithoutTouchingTheDevice(int team)
+    {
+        HttpResponseMessage response = await _client.PostAsJsonAsync(
+            "/api/team", new { id = "abc123", team });
+
+        // Range is rejected before the device lookup, so this fails on the
+        // team rather than on "no such device".
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        JsonElement body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("team must be", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task PostTeam_ForUnknownDevice_ReturnsBadRequest()
+    {
+        // 0 is a legal team (neutral), so this must fail on the unknown id —
+        // proving neutral is accepted by the range check and reaches lookup.
+        HttpResponseMessage response = await _client.PostAsJsonAsync(
+            "/api/team", new { id = "nosuch", team = 0 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        JsonElement body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("nosuch", body.GetProperty("error").GetString());
+    }
 }

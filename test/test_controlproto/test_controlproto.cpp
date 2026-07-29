@@ -200,7 +200,10 @@ void test_patch_config_unknown_field_leaves_known_unchanged() {
   // A valid key followed by an unknown one must roll back the valid one too.
   ConfigDoc cfg;
   cfg.ownTeam = 2;
-  PatchResult r = applyConfigPatch("{\"ownTeam\":9,\"bar\":2}", cfg);
+  // The first key must be VALID for this test to mean anything: it asserts
+  // that a good field is rolled back by a later bad one, not that a bad field
+  // is rejected on its own.
+  PatchResult r = applyConfigPatch("{\"ownTeam\":3,\"bar\":2}", cfg);
   TEST_ASSERT_FALSE(r.ok);
   TEST_ASSERT_EQUAL_STRING("unknown field: bar", r.error);
   TEST_ASSERT_EQUAL_INT(2, cfg.ownTeam);
@@ -258,6 +261,41 @@ void test_patch_config_start_hp_valid_and_invalid() {
   TEST_ASSERT_FALSE(bad.ok);
   TEST_ASSERT_EQUAL_STRING("startHp must be 4/8/16/32", bad.error);
   TEST_ASSERT_EQUAL_INT(8, cfg.startHp);
+}
+
+void test_patch_config_own_team_valid_and_invalid() {
+  ConfigDoc cfg;
+  // 0 = TeamNone: a neutral target that everyone may shoot and that belongs to
+  // no side. It is both the ConfigDoc default and a legal patch value.
+  TEST_ASSERT_EQUAL_INT(TeamNone, cfg.ownTeam);
+  PatchResult ok = applyConfigPatch("{\"ownTeam\":1}", cfg);
+  TEST_ASSERT_TRUE(ok.ok);
+  TEST_ASSERT_EQUAL_INT(1, cfg.ownTeam);
+  ok = applyConfigPatch("{\"ownTeam\":4}", cfg);
+  TEST_ASSERT_TRUE(ok.ok);
+  TEST_ASSERT_EQUAL_INT(4, cfg.ownTeam);
+  // Assigning back to neutral is how a board leaves a side.
+  ok = applyConfigPatch("{\"ownTeam\":0}", cfg);
+  TEST_ASSERT_TRUE(ok.ok);
+  TEST_ASSERT_EQUAL_INT(TeamNone, cfg.ownTeam);
+  // Out of range is rejected and leaves the config unchanged — an unchecked
+  // ownTeam silently produced a team no colour, sound or score bucket exists
+  // for, and the host would then mirror a team that can never win.
+  cfg.ownTeam = 3;
+  PatchResult bad = applyConfigPatch("{\"ownTeam\":5}", cfg);
+  TEST_ASSERT_FALSE(bad.ok);
+  TEST_ASSERT_EQUAL_STRING("ownTeam must be 0-4 (0 = none)", bad.error);
+  TEST_ASSERT_EQUAL_INT(3, cfg.ownTeam);
+  bad = applyConfigPatch("{\"ownTeam\":-1}", cfg);
+  TEST_ASSERT_FALSE(bad.ok);
+  TEST_ASSERT_EQUAL_INT(3, cfg.ownTeam);
+  // A non-numeric value reads as 0 through ArduinoJson. Now that 0 is LEGAL,
+  // the range check can no longer catch it, so the type must be checked
+  // explicitly — otherwise {"ownTeam":"red"} would silently go neutral.
+  bad = applyConfigPatch("{\"ownTeam\":\"red\"}", cfg);
+  TEST_ASSERT_FALSE(bad.ok);
+  TEST_ASSERT_EQUAL_STRING("bad type: ownTeam", bad.error);
+  TEST_ASSERT_EQUAL_INT(3, cfg.ownTeam);
 }
 
 void test_patch_config_damage_multiplier_valid_and_invalid() {
@@ -597,6 +635,7 @@ int main(int, char **) {
   RUN_TEST(test_patch_config_arrays_and_colours);
   RUN_TEST(test_patch_config_round_trip);
   RUN_TEST(test_patch_config_start_hp_valid_and_invalid);
+  RUN_TEST(test_patch_config_own_team_valid_and_invalid);
   RUN_TEST(test_patch_config_damage_multiplier_valid_and_invalid);
   RUN_TEST(test_patch_config_team_damage_mult);
   RUN_TEST(test_serialize_status_golden);

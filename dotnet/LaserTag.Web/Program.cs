@@ -100,6 +100,17 @@ app.MapPost("/api/match/stop", (IGameSession session) =>
     return Results.Ok(new { ok = true });
 });
 
+app.MapPost("/api/team", async (TeamRequest request, IGameSession session) =>
+{
+    if (!Teams.IsValid(request.Team))
+    {
+        return Results.BadRequest(new { error = $"team must be 0-{Teams.Max} (0 = none)" });
+    }
+
+    string? error = await session.SetTeamAsync(request.Id, request.Team);
+    return error is null ? Results.Ok(new { ok = true }) : Results.BadRequest(new { error });
+});
+
 app.MapPost("/api/control", (ControlRequest request, IGameSession session) =>
 {
     if (!Enum.TryParse(request.Kind, ignoreCase: true, out ControlKind kind))
@@ -118,6 +129,11 @@ app.Run();
 /// <param name="Id">Optional device id filter.</param>
 /// <param name="T">Optional activate self-timeout in milliseconds.</param>
 internal sealed record ControlRequest(string Kind, string? Id, int? T);
+
+/// <summary>A request to assign one device's team.</summary>
+/// <param name="Id">The device id.</param>
+/// <param name="Team">The team: 0 for neutral, 1..4 for a side.</param>
+internal sealed record TeamRequest(string Id, int Team);
 
 /// <summary>Exposed so integration tests can construct a test host.</summary>
 public partial class Program;

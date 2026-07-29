@@ -13,8 +13,18 @@ public sealed record Participant
     /// <summary>Gets the device hostname (e.g. <c>lasertag-matrix</c>).</summary>
     public required string Hostname { get; init; }
 
-    /// <summary>Gets the team index the device reported at lobby time.</summary>
+    /// <summary>
+    /// Gets the team index the device reported at lobby time, or
+    /// <see cref="Teams.None"/> for a neutral target.
+    /// </summary>
     public required int Team { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether this is a neutral target — a device on
+    /// no side. Everyone may shoot it and hits on it score for the shooter,
+    /// but it is never a candidate for winning.
+    /// </summary>
+    public bool IsNeutral => Team == Teams.None;
 
     /// <summary>Gets the last observed hp.</summary>
     public required int Hp { get; init; }

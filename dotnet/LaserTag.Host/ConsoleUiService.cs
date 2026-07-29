@@ -22,7 +22,7 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
 
     private void Repl(CancellationToken stoppingToken)
     {
-        AnsiConsole.MarkupLine("[bold]LaserTag host[/] — commands: devices, start dm <dur> [[--kill N]] [[--hit N]] [[--waves <dur>]], start elim [[--timer <dur>]], start chase <dur|--first N> [[--min d]] [[--max d]] [[--gap d]] [[--penalty N]] [[--dark]], score, stop, reset [[id]], activate [[id]], deactivate [[id]], fw [[bin]], ota <id|all> [[--force]] [[bin]], quit");
+        AnsiConsole.MarkupLine("[bold]LaserTag host[/] — commands: devices, start dm <dur> [[--kill N]] [[--hit N]] [[--waves <dur>]], start elim [[--timer <dur>]], start chase <dur|--first N> [[--min d]] [[--max d]] [[--gap d]] [[--penalty N]] [[--dark]], score, stop, reset [[id]], activate [[id]], deactivate [[id]], team <id|all> <0-4|none>, teams split <n>, fw [[bin]], ota <id|all> [[--force]] [[bin]], quit");
         while (!stoppingToken.IsCancellationRequested)
         {
             string? line = Console.ReadLine();
@@ -79,6 +79,9 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
                 break;
             case "deactivate":
                 game.SendControl(new Control { Kind = ControlKind.Deactivate, Id = args.ElementAtOrDefault(1) });
+                break;
+            case "team" or "teams":
+                RunTeam(args);
                 break;
             case "fw":
                 PrintFirmware(args.ElementAtOrDefault(1));
@@ -254,13 +257,93 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
         }
     }
 
+    // team <id|all> <0-4|none>   — assign one board or the whole roster
+    // teams split <n>            — deal the online roster round-robin into n sides
+    private void RunTeam(string[] args)
+    {
+        if (args.ElementAtOrDefault(1)?.ToLowerInvariant() == "split")
+        {
+            RunTeamSplit(args.ElementAtOrDefault(2));
+            return;
+        }
+
+        string? target = args.ElementAtOrDefault(1);
+        if (target is null || !Teams.TryParse(args.ElementAtOrDefault(2), out int team))
+        {
+            AnsiConsole.MarkupLine("[yellow]usage: team <id|all> <0-4|none>  |  teams split <n>[/]");
+            return;
+        }
+
+        bool all = target.Equals("all", StringComparison.OrdinalIgnoreCase);
+        var targets = game.Devices().Where(e => all || e.Id == target).ToList();
+        if (targets.Count == 0)
+        {
+            // Distinguish "the roster is empty" from "that id isn't here":
+            // an empty roster after a fresh start usually just means the
+            // heartbeats have not landed yet (they can take ~30-60 s).
+            AnsiConsole.MarkupLine(all
+                ? "[red]no devices in the roster yet[/] — wait for heartbeats and retry."
+                : $"[red]no device with id {target}.[/]");
+            return;
+        }
+
+        AnsiConsole.MarkupLineInterpolated(
+            $"assigning team [bold]{Teams.Describe(team)}[/] to {targets.Count} device(s)…");
+        foreach (var e in targets)
+        {
+            Assign(e.Id, team);
+        }
+    }
+
+    private void RunTeamSplit(string? countText)
+    {
+        if (!int.TryParse(countText, out int sides) || sides < 2 || sides > Teams.Max)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[yellow]usage: teams split <2-{Teams.Max}>[/]");
+            return;
+        }
+
+        // Deal round-robin over a STABLE order (by id) so the same fleet always
+        // splits the same way — a random or roster-order split would silently
+        // reshuffle sides between matches.
+        var online = game.Devices().Where(e => e.Online).OrderBy(e => e.Id, StringComparer.Ordinal).ToList();
+        if (online.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[red]no online devices to split[/] — wait for heartbeats and retry.");
+            return;
+        }
+
+        // Say how many are being split. A split that silently covers only the
+        // boards discovered so far looks identical to a split of the whole
+        // fleet, and leaves the rest on whatever team they had.
+        AnsiConsole.MarkupLineInterpolated(
+            $"splitting [bold]{online.Count}[/] online device(s) into {sides} team(s)…");
+        for (int i = 0; i < online.Count; i++)
+        {
+            Assign(online[i].Id, (i % sides) + 1);
+        }
+    }
+
+    private void Assign(string id, int team)
+    {
+        string? error = game.SetTeamAsync(id, team).GetAwaiter().GetResult();
+        if (error is null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"  [green]{id}[/] -> team {Teams.Describe(team)}");
+        }
+        else
+        {
+            AnsiConsole.MarkupLineInterpolated($"  [red]{id} FAILED[/]: {error}");
+        }
+    }
+
     private void PrintDevices()
     {
         var table = new Table().AddColumns("id", "host", "ip", "team", "hp", "online");
         foreach (var e in game.Devices())
         {
             Heartbeat hb = e.LastHeartbeat;
-            table.AddRow(e.Id, hb.Source, hb.Ip, hb.Team.ToString(), hb.Hp.ToString(), e.Online ? "yes" : "[red]no[/]");
+            table.AddRow(e.Id, hb.Source, hb.Ip, Teams.Describe(hb.Team), hb.Hp.ToString(), e.Online ? "yes" : "[red]no[/]");
         }
 
         AnsiConsole.Write(table);

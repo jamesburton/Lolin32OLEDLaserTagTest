@@ -8,6 +8,45 @@ Codes & features behind interfaces so other guns/protocols and boards plug in.
 
 ## Current State
 
+### Team assignment SHIPPED + fw 2.2.0 fleet-wide (2026-07-29)
+Closes the "no team assignment" gap. **Team 0 = `none` = a neutral target and
+is now the default**: shootable by everyone, scores for the SHOOTER's team,
+never a side that can win. That matches what the firmware always did
+physically — it has **never own-team filtered**, so every decoded shot damages
+whatever board receives it.
+- **Firmware 2.2.0:** `ownTeam` is validated (`0-4`, with an explicit TYPE
+  check — ArduinoJson reads a non-numeric as 0, which is now legal, so
+  `{"ownTeam":"red"}` would otherwise silently un-team a board). NVS default
+  moved 2 -> `cp::TeamNone`. Boards provisioned earlier keep their stored team.
+- **Surfaces:** host `team <id|all> <0-4|none>` and `teams split <n>`
+  (round-robin over a STABLE id order, so a fleet always splits the same way);
+  `POST /api/team` on the web manager; team buttons on each Devices card in
+  both shells. All route to `PATCH /api/config` — teams are persisted config,
+  NOT control plane.
+- **Engine:** neutrals excluded from elimination's last-team-standing (they
+  would otherwise win or keep a round alive), and `AddScore` refuses team 0 so
+  a malformed event can't open a "team none" bucket that wins.
+- **`ota all` PROVEN:** flashed all four boards 2.1.0 -> 2.2.0 over HTTP in
+  ~50 s total, no espota, no per-board IP chasing.
+- **Verified live: 25/26** — assign-to-neutral, heartbeat mirroring, 2v2 split,
+  and device-side rejection of `5`/`-1`/`"red"` with the team surviving intact.
+
+### ⚠ IR board-to-board is NOT working — new, unexplained (2026-07-29)
+Swept **every board as shooter** (8 shots, damage 4, hp checked on all four):
+**nothing registered anywhere, in any direction, including self-loopback** —
+which the handoff records as previously working on board 1. Then enabled raw
+frame debug (`{"cmd":"debug","value":1}`) on all four and fired 10 more: the
+telemetry stream carried **only heartbeats, no IR frames at all**, not even
+undecodable ones. So no receiver is seeing *any* IR energy — this is an
+emit-or-alignment problem, not a decode problem.
+**`fire` returning `ok:true` proves nothing** — `IrTx::present()` is driven by
+the compile-time BoardProfile, so every S3 board accepts `fire` whether or not
+an LED is physically attached. Only the prototype board (currently `eb278c`)
+has one wired, in raw-drive mode (no 2N2222A), so its range is very short.
+**Next: aim the prototype board's IR LED directly at another board a few cm
+away and re-run** `scratchpad/ir-sweep.ps1`-style bursts; if still silent,
+suspect the LED/pin wiring rather than range.
+
 ### FLEET ON 2.1.0 + first 4-board integration test PASSED (2026-07-29)
 First session with **all four S3 boards powered at once**. Boards 1 (`752b38`)
 and 2 (`eb278c`) were still on the pre-2.1.0 image, so each got its one
@@ -491,6 +530,20 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   and looks exactly like "no boards". Board IPs in these docs are ALWAYS
   suspect: everything roams on DHCP, and a stale IP may now answer as some
   other device entirely (`.48` did).
+- **Never send a request body with `JsonContent.Create` to a board.** It
+  serializes lazily, so the length is unknown and HttpClient falls back to
+  `Transfer-Encoding: chunked` — and the ESP32 Arduino `WebServer` reads a body
+  only when `Content-Length` is present, so the device sees an EMPTY body and
+  answers `400 empty body — send Content-Type: application/json` (a misleading
+  message: the content type was correct all along). `LaserTagClient` now
+  pre-serializes via a `JsonBody` helper, guarded by a regression test. Note
+  the guard must sample `ContentLength` BEFORE anything reads the content —
+  reading buffers it and retroactively populates the header, which made the
+  first version of that test pass against the very bug it existed to catch.
+- **Heartbeat discovery can take up to ~90 s**, not the ~30 s assumed earlier
+  — it varies run to run. A command issued against a half-filled roster
+  silently covers only the boards discovered so far (`teams split` did exactly
+  this), so the host now prints how many devices it is acting on.
 - **`ota all` does not check the board type — it pushes ONE binary to every
   online outdated board.** Heartbeats carry no chip/model field, so if the
   **Lolin32 (ESP32)** is online alongside the S3 fleet it will be sent the
@@ -587,14 +640,10 @@ see the RF section above before reopening it.
 phone** — everything else about the Android app is proven except the one thing
 that matters most (receiving broadcasts under the multicast lock).
 
-**BLOCKING FOR REAL PLAY — no team assignment exists.** Teams are read from
-each board's `config.ownTeam`, which is settable **only** by
-`PATCH /api/config` per board; no host, web or Android surface sets it, and
-`MatchEngine` just snapshots `hb.Team` at start. All four boards currently sit
-on **team 2**, so a deathmatch between them is presently unplayable as teams —
-every hit is friendly fire and no team can win. This is the single biggest gap
-between "the fleet works" and "we can play a game". Fix = a `team <id> <n>`
-verb + a Devices-screen control, both hitting the existing REST config route.
+**✅ RESOLVED 2026-07-29 — team assignment shipped** (see Current State). Teams
+are assigned from the host CLI, both managers and the JSON API; team 0 =
+neutral is the default. The fleet currently sits 2v2 (`752b38`+`eb20f8` = 1,
+`eb278c`+`e45614` = 2).
 
 **Immediately actionable:** (a) ✅ **DONE 2026-07-29 — boards 1+2 powered, OTA'd
 and fleet-tested**; the whole fleet is 2.1.0 and enforces `id=`. (b) **eyeball

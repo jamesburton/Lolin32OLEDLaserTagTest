@@ -86,6 +86,23 @@ code { background: #000; padding: 0 0.25rem; border-radius: 3px; }
 .btn-go { background: var(--go); border-color: var(--go); color: #06240f; font-weight: 700; }
 .btn-danger { background: var(--danger); border-color: var(--danger); color: #2a0603; font-weight: 700; }
 
+/* Team picker: one button per side, coloured by the team's own colour so the
+   choice matches what the board actually shows when hit. The selected side is
+   filled; the rest are outlined, which keeps the current team readable at a
+   glance on a phone without relying on a separate label. */
+.team-row { align-items: center; margin-bottom: 0.5rem; }
+.team-btn { min-width: 44px; padding: 0.6rem 0.7rem; border-width: 2px; }
+.team-btn.team-1 { border-color: var(--team1); }
+.team-btn.team-2 { border-color: var(--team2); }
+.team-btn.team-3 { border-color: var(--team3); }
+.team-btn.team-4 { border-color: var(--team4); }
+.team-btn.sel { font-weight: 700; }
+.team-btn.team-0.sel { background: var(--muted); color: #10151c; }
+.team-btn.team-1.sel { background: var(--team1); color: #f4f8ff; }
+.team-btn.team-2.sel { background: var(--team2); color: #fff4f2; }
+.team-btn.team-3.sel { background: var(--team3); color: #06240f; }
+.team-btn.team-4.sel { background: var(--team4); color: #10151c; }
+
 .form { display: grid; gap: 0.75rem; }
 label { display: grid; gap: 0.25rem; color: var(--muted); }
 label.wide { margin-bottom: 1rem; }

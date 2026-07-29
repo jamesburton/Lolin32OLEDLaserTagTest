@@ -40,6 +40,17 @@ public interface IGameSession
     /// <param name="control">The control to send.</param>
     void SendControl(Control control);
 
+    /// <summary>Assigns a device's team (0 = neutral, 1..4 = a side).</summary>
+    /// <param name="deviceId">The device id from the roster.</param>
+    /// <param name="team">The team to assign.</param>
+    /// <returns>An error message, or <see langword="null"/> on success.</returns>
+    /// <remarks>
+    /// Teams live in each device's persisted config, not in the control plane,
+    /// so this is a REST call to the board and takes effect from the next
+    /// match (the lobby fixes teams at start).
+    /// </remarks>
+    Task<string?> SetTeamAsync(string deviceId, int team);
+
     /// <summary>
     /// True once any telemetry datagram has arrived.
     /// </summary>

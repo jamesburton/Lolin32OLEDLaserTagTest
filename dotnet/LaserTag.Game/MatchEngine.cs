@@ -234,7 +234,17 @@ public sealed class MatchEngine
         // _scores via the closure below, and a same-event CheckEnd must see
         // that update immediately rather than a stale copy.
         scores: _scores,
-        addScore: (team, pts) => _scores[team] = _scores.GetValueOrDefault(team) + pts,
+        // Neutral is not a scoring bucket. A shot always carries a real
+        // shooter team (the Vatos protocol encodes 1..4), but a malformed or
+        // spoofed event reporting team 0 would otherwise create a "team none"
+        // score that could go on to win the match.
+        addScore: (team, pts) =>
+        {
+            if (team != Teams.None)
+            {
+                _scores[team] = _scores.GetValueOrDefault(team) + pts;
+            }
+        },
         send: Send);
 
     private void OnHit(HitEvent hit)

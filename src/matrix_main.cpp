@@ -44,7 +44,7 @@ namespace cp = ControlProto;
 // Firmware version reported on the wire (contract §1.3 fw=). BUMP THIS on
 // every behavioural firmware change — the host's fleet updater compares it
 // against the built image to decide who needs an OTA (fleet-ota spec).
-#define LT_FW_VERSION "2.1.0"
+#define LT_FW_VERSION "2.2.0"
 static const char *kFirmwareVersion = LT_FW_VERSION;
 
 // Embedded marker so the host can read a firmware.bin's version by scanning
@@ -173,7 +173,10 @@ void loadConfig() {
   strncpy(config.hostname, host.c_str(), sizeof(config.hostname) - 1);
   config.hostname[sizeof(config.hostname) - 1] = '\0';
 
-  config.ownTeam = nvs.getInt("ownTeam", 2);
+  // Default NEUTRAL (cp::TeamNone), not team 2: an unprovisioned board should
+  // be a target everyone may shoot, never a silent member of a side. Boards
+  // provisioned before 2.2.0 still have their stored value and keep it.
+  config.ownTeam = nvs.getInt("ownTeam", cp::TeamNone);
   String proto = nvs.getString("protocolId", "vatos");
   strncpy(config.protocolId, proto.c_str(), sizeof(config.protocolId) - 1);
   config.protocolId[sizeof(config.protocolId) - 1] = '\0';

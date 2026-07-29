@@ -356,7 +356,19 @@ PatchResult applyConfigPatch(const char *json, ConfigDoc &cfg) {
               sizeof(staged.hostname) - 1);
       staged.hostname[sizeof(staged.hostname) - 1] = '\0';
     } else if (strcmp(key, "ownTeam") == 0) {
-      staged.ownTeam = kv.value().as<int>();
+      // The type check is load-bearing: ArduinoJson reads a non-numeric value
+      // as 0, which is now the LEGAL "neutral" value, so without it
+      // {"ownTeam":"red"} would quietly un-team the board.
+      if (!kv.value().is<int>()) {
+        snprintf(res.error, sizeof(res.error), "bad type: ownTeam");
+        return res;
+      }
+      const int v = kv.value().as<int>();
+      if (v < TeamNone || v > (int)TeamColourCount) {
+        snprintf(res.error, sizeof(res.error), "ownTeam must be 0-4 (0 = none)");
+        return res;
+      }
+      staged.ownTeam = v;
     } else if (strcmp(key, "protocolId") == 0) {
       if (!kv.value().is<const char *>()) {
         snprintf(res.error, sizeof(res.error), "bad type: protocolId");

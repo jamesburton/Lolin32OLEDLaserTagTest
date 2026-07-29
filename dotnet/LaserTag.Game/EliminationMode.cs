@@ -7,6 +7,11 @@ namespace LaserTag.Game;
 /// with an alive online participant wins. An optional timer cap ends the round
 /// with the most-alive team winning (tie → draw).
 /// </summary>
+/// <remarks>
+/// Neutral targets (<see cref="Teams.None"/>) take no part in the win
+/// condition — they can be shot, but they are not a side that can be the last
+/// one standing.
+/// </remarks>
 public sealed class EliminationMode : IGameMode
 {
     /// <summary>Initializes the mode.</summary>
@@ -45,8 +50,11 @@ public sealed class EliminationMode : IGameMode
     /// <inheritdoc/>
     public MatchResult? CheckEnd(MatchContext context)
     {
+        // Neutral targets are excluded: they are props, not a side. Counting
+        // them would let "team none" be the last team standing and win the
+        // round, and would keep a round alive after every real team is out.
         Dictionary<int, int> aliveByTeam = context.Participants
-            .Where(p => p.Alive && p.Online)
+            .Where(p => p.Alive && p.Online && !p.IsNeutral)
             .GroupBy(p => p.Team)
             .ToDictionary(g => g.Key, g => g.Count());
 

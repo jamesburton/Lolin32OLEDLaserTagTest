@@ -285,4 +285,61 @@ public sealed class LaserTagClientTests
         Assert.Null(ex.ErrorMessage);
         Assert.Contains("404", ex.RawBody);
     }
+
+    /// <summary>
+    /// Every request body MUST carry a known Content-Length.
+    /// </summary>
+    /// <remarks>
+    /// This is a hardware regression guard, not a style preference. With
+    /// <c>JsonContent.Create</c> the length is unknown until the content is
+    /// written, so HttpClient sends <c>Transfer-Encoding: chunked</c> — and the
+    /// ESP32 Arduino <c>WebServer</c> reads a body only when Content-Length is
+    /// present, so every PATCH/POST silently arrived empty and the device
+    /// answered "400 empty body". Nothing in the stub-handler tests noticed,
+    /// because a stub reads the content regardless of framing.
+    /// </remarks>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task BodyCarryingRequests_SendContentLength_NotChunked()
+    {
+        // ContentLength MUST be sampled before anything reads the content:
+        // reading buffers it, which retroactively populates the header even for
+        // a chunked JsonContent. Sampling after a read makes this test pass
+        // against the very bug it exists to catch.
+        var sizes = new List<long?>();
+        using var handler = new LengthProbingHandler(sizes);
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://device.local") };
+        var client = new LaserTagClient(http);
+
+        // Each call is expected to throw on the deliberate 400; the assertion
+        // of interest already ran inside the responder.
+        await Assert.ThrowsAsync<LaserTagApiException>(
+            () => client.PatchConfigAsync(new Dictionary<string, object?> { ["ownTeam"] = 1 }));
+        await Assert.ThrowsAsync<LaserTagApiException>(
+            () => client.SendCommandAsync(new CommandDoc { Cmd = "identify" }));
+        await Assert.ThrowsAsync<LaserTagApiException>(
+            () => client.SetModeAsync(new ModeDoc { Mode = "idle" }));
+
+        Assert.Equal(3, sizes.Count);
+        Assert.All(sizes, size => Assert.True(size > 0, "body was sent without a Content-Length (chunked)"));
+    }
+
+    /// <summary>
+    /// Records each request's <c>Content-Length</c> without reading the body,
+    /// then fails the request so the client short-circuits.
+    /// </summary>
+    /// <param name="sizes">Collects one entry per request.</param>
+    private sealed class LengthProbingHandler(List<long?> sizes) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            sizes.Add(request.Content?.Headers.ContentLength);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent(
+                    """{"error":"stop here"}""", System.Text.Encoding.UTF8, "application/json"),
+            });
+        }
+    }
 }

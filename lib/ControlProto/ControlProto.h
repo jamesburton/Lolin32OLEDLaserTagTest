@@ -208,6 +208,20 @@ void scoreGrid(const int scores[4], const int *enabledTeams,
 constexpr size_t TeamColourCount = 4;
 
 /// <summary>
+/// "No team" — a neutral target. It belongs to no side: everyone may shoot it,
+/// hits on it score for the SHOOTER's team, and it is never a candidate for
+/// winning a match. This is the default so a freshly provisioned board is a
+/// target for all players rather than silently joining team 2.
+/// </summary>
+/// <remarks>
+/// The firmware has never own-team filtered — <c>applyHit</c> runs for every
+/// decoded shot — so a board was always physically neutral. TeamNone makes
+/// that explicit and, more importantly, tells the HOST not to treat the board
+/// as a side that can win.
+/// </remarks>
+constexpr int TeamNone = 0;
+
+/// <summary>
 /// In-memory mirror of the persisted ConfigDoc (contract §2.2). teamColours is
 /// stored as a fixed map of the four Vatos team indices (1..4) to "#RRGGBB"
 /// strings; enabledTeams as a small int array.
@@ -215,7 +229,7 @@ constexpr size_t TeamColourCount = 4;
 struct ConfigDoc {
   char deviceId[8] = "";                 ///< 6-char lowercase hex + NUL
   char hostname[32] = "";                ///< OTA / mDNS name
-  int ownTeam = 0;                       ///< index into the team set
+  int ownTeam = TeamNone;                ///< team 1..4, or TeamNone (neutral)
   int enabledTeams[8] = {0};             ///< active subset (values)
   size_t enabledTeamsCount = 0;          ///< number of valid enabledTeams
   char protocolId[16] = "vatos";         ///< which IrProtocol decoded

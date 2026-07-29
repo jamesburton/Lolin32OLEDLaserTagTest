@@ -325,6 +325,8 @@ dotnet run --project dotnet/LaserTag.Host            # auto-detects the subnet b
 # devices | start dm 5m [--kill 5 --hit 1 --waves 30s] | start elim [--timer 10m]
 # start chase <dur|--first N> [--min d] [--max d] [--gap d] [--penalty N] [--dark]
 # score | stop | reset [id] | activate [id] | deactivate [id] | quit
+# team <id|all> <0-4|none>  — assign a board's team (0/none = neutral target)
+# teams split <n>           — deal the online roster round-robin into n sides
 # fw [bin]                — fleet firmware table: running vs available (from the
 #                           LTFW: marker embedded in firmware.bin)
 # ota <id|all> [--force]  — push firmware over HTTP to online boards; `all`
@@ -338,12 +340,37 @@ future phone app — no espota/python needed. Spec:
 `docs/superpowers/specs/2026-07-27-fleet-ota-design.md`. Boards on older
 firmware need one last espota flash to gain the endpoint.
 
-> ⚠ **Teams must be assigned per board, out of band.** A match reads each
-> device's `ownTeam` from its heartbeat and snapshots it at start; nothing in
-> the host, web or Android manager can change it. Set it before starting:
-> `curl -X PATCH http://<board-ip>/api/config -d '{"ownTeam":1}'`. Boards
-> default to team 2, so a fresh fleet is all one team — every hit is friendly
-> fire and no team can win.
+### Teams (firmware ≥ 2.2.0)
+
+A device's team lives in its **persisted config** (`ownTeam`), not the control
+plane: a match reads each board's team from its heartbeat and snapshots it when
+the lobby forms. Assign teams from any surface:
+
+```sh
+# Host CLI
+team <id|all> <0-4|none>   # one board, or the whole roster
+teams split <n>            # deal the online roster round-robin into n sides
+
+# Web / Android manager: the team buttons on each Devices card
+# JSON API
+curl -X POST http://<host>:5080/api/team -H 'content-type: application/json' \
+     -d '{"id":"752b38","team":1}'
+```
+
+**Team 0 = `none` = a neutral target, and it is the default.** A neutral board
+is shootable by everyone, hits on it score for the *shooter's* team, and it can
+never win a match — the right default for a target that isn't playing for a
+side. This matches what the firmware has always done physically: it has never
+own-team filtered, so every decoded shot damages the board that receives it.
+Boards provisioned before 2.2.0 keep whatever team they were given (most were
+2); `team all none` resets them.
+
+> `teams split` uses a stable order (by device id), so the same fleet always
+> splits the same way rather than reshuffling sides between matches.
+
+> ⚠ **Teams take effect from the next match.** The lobby fixes each
+> participant's team at start, so reassigning mid-round does not move a player —
+> that would silently rewrite who the existing scores belonged to.
 
 > ⚠ **The lobby is fixed at match start.** Devices that come online after the
 > countdown are ignored for the rest of the match (a device that *drops and

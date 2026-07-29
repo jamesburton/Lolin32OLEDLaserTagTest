@@ -311,7 +311,12 @@ components:
           example: team-colours
         ownTeam:
           type: integer
-          description: The device's own team index (0..N).
+          minimum: 0
+          maximum: 4
+          description: >-
+            The device's team: 1..4 for a side, or 0 for `none` — a neutral
+            target that everyone may shoot, that scores for the shooter, and
+            that can never win a match. 0 is the default from firmware 2.2.0.
           example: 2
         hp:
           type: integer
@@ -348,6 +353,9 @@ components:
           example: lasertag-matrix
         ownTeam:
           type: integer
+          minimum: 0
+          maximum: 4
+          description: Team 1..4, or 0 for a neutral target (the default).
           example: 2
         enabledTeams:
           type: array
@@ -437,6 +445,11 @@ components:
           type: string
         ownTeam:
           type: integer
+          minimum: 0
+          maximum: 4
+          description: >-
+            Team 1..4, or 0 for a neutral target. Values outside 0..4, and
+            non-integers, are rejected with 400 (firmware 2.2.0+).
         enabledTeams:
           type: array
           items:

@@ -85,7 +85,7 @@ public sealed class LaserTagClient
         ArgumentNullException.ThrowIfNull(partial);
         using var request = new HttpRequestMessage(HttpMethod.Patch, "/api/config")
         {
-            Content = JsonContent.Create(partial, options: JsonOptions),
+            Content = JsonBody(partial),
         };
         return await SendAsync<ConfigDoc>(request, cancellationToken).ConfigureAwait(false);
     }
@@ -103,7 +103,7 @@ public sealed class LaserTagClient
         ArgumentNullException.ThrowIfNull(mode);
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/mode")
         {
-            Content = JsonContent.Create(mode, options: JsonOptions),
+            Content = JsonBody(mode),
         };
         return await SendAsync<ModeDoc>(request, cancellationToken).ConfigureAwait(false);
     }
@@ -122,11 +122,29 @@ public sealed class LaserTagClient
         ArgumentNullException.ThrowIfNull(command);
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/command")
         {
-            Content = JsonContent.Create(command, options: JsonOptions),
+            Content = JsonBody(command),
         };
         CommandAck ack = await SendAsync<CommandAck>(request, cancellationToken).ConfigureAwait(false);
         return ack.Ok;
     }
+
+    /// <summary>
+    /// Builds a request body with an explicit <c>Content-Length</c>.
+    /// </summary>
+    /// <typeparam name="T">The payload type.</typeparam>
+    /// <param name="payload">The object to serialize.</param>
+    /// <returns>Buffered JSON content.</returns>
+    /// <remarks>
+    /// Deliberately NOT <c>JsonContent.Create</c>: that serializes lazily while
+    /// writing, so its length is unknown up front and HttpClient falls back to
+    /// <c>Transfer-Encoding: chunked</c>. The ESP32 Arduino <c>WebServer</c>
+    /// reads a request body only when <c>Content-Length</c> is present — with a
+    /// chunked body it sees nothing and answers
+    /// <c>400 empty body</c>. Serializing first makes the length known, so the
+    /// body is sent as a single sized entity the device can read.
+    /// </remarks>
+    private static StringContent JsonBody<T>(T payload) =>
+        new(JsonSerializer.Serialize(payload, JsonOptions), System.Text.Encoding.UTF8, "application/json");
 
     private async Task<T> SendAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken)
     {
