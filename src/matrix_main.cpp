@@ -608,11 +608,24 @@ String matrixStatus() {
                   : vis == Vis::Flash ? "flash"
                   : vis == Vis::Dead  ? "dead"
                                       : "dark";
-  char buf[128];
+  char buf[320];
+  // The audio/SD lines are diagnostics: without a serial cable there is
+  // otherwise no way to tell "no amp configured" from "amp fine, clip
+  // rejected", or "no card inserted" from "card wired to different pins".
   snprintf(buf, sizeof(buf),
-           "vis=%s mode=%s hp=%d brightness=%d hits=%lu debug=%d\n", m,
-           activeMode, hp, config.brightness, (unsigned long)hitCount,
-           debugFrames ? 1 : 0);
+           "vis=%s mode=%s hp=%d brightness=%d hits=%lu debug=%d\n"
+           "audio=%s sfxBank=%u sfxPlays=%lu sfxLast=%s\n"
+           "sdWired=%d sdMounted=%d sdPins=cs%d,mosi%d,miso%d,sck%d "
+           "startupSfx=%s\n",
+           m, activeMode, hp, config.brightness, (unsigned long)hitCount,
+           debugFrames ? 1 : 0,
+           Sound::present() ? "yes" : "NO-AMP-CONFIGURED",
+           (unsigned)Sound::sfxCount(), (unsigned long)Sound::sfxPlays(),
+           Sound::sfxLastName(), activeProfile.hasSdCard() ? 1 : 0,
+           Storage::sdMounted() ? 1 : 0, (int)activeProfile.sdCsPin,
+           (int)activeProfile.sdMosiPin, (int)activeProfile.sdMisoPin,
+           (int)activeProfile.sdSckPin,
+           config.startupSfx[0] ? config.startupSfx : "(none)");
   return String(buf);
 }
 
@@ -874,8 +887,17 @@ void handleSdList() {
     return;
   }
   if (!sdReady()) {
-    sendJson(503, "{\"present\":false,\"error\":\"card not mounted (absent or "
-                  "unreadable)\"}");
+    // Report the pins we tried: the commonest cause of this is a card wired to
+    // different pins than the board profile assumes, and without a serial
+    // cable there is no other way to see what was attempted.
+    char err[200];
+    snprintf(err, sizeof(err),
+             "{\"present\":false,\"error\":\"card not mounted — not inserted, "
+             "not FAT16/FAT32, or wired to other pins\",\"triedPins\":{\"cs\":%d,"
+             "\"mosi\":%d,\"miso\":%d,\"sck\":%d}}",
+             (int)prof.sdCsPin, (int)prof.sdMosiPin, (int)prof.sdMisoPin,
+             (int)prof.sdSckPin);
+    sendJson(503, err);
     return;
   }
 
