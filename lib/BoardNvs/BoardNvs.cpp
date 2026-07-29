@@ -4,8 +4,14 @@
 
 namespace BoardNvs {
 namespace {
-const char *kKeys[] = {"matrixPin",  "matrixW", "matrixH", "matrixOrder",
-                       "rgbR",       "rgbG",    "rgbB",    "activityLedPin"};
+// MUST list every key Board::applyOverride accepts. `cfg` validates against
+// applyOverride and saves to NVS, but only the keys named here are read back at
+// boot — so a key missing from this list saves happily and is then silently
+// ignored forever. The I2S and SD pins were in exactly that state.
+const char *kKeys[] = {"matrixPin",  "matrixW",    "matrixH",   "matrixOrder",
+                       "rgbR",       "rgbG",       "rgbB",      "activityLedPin",
+                       "i2sBclkPin", "i2sWsPin",   "i2sDinPin",
+                       "sdCsPin",    "sdMosiPin",  "sdMisoPin", "sdSckPin"};
 constexpr size_t kNumKeys = sizeof(kKeys) / sizeof(kKeys[0]);
 } // namespace
 

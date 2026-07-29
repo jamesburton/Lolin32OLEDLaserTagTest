@@ -626,18 +626,72 @@ void onLine(const char *line) {
   } else if (strcmp(line, "sdprobe") == 0) {
     // Raw SPI handshake with the card, bypassing the SD library. Reports the
     // bytes over UDP so a headless board can be diagnosed.
-    Storage::SdProbe p =
-        Storage::sdProbeRaw(activeProfile.sdCsPin, activeProfile.sdMosiPin,
-                            activeProfile.sdMisoPin, activeProfile.sdSckPin);
-    char msg[160];
-    snprintf(msg, sizeof(msg),
-             "SDPROBE responded=%d r1=0x%02X cmd8=%02X%02X%02X%02X%02X v2=%d "
-             "pins=cs%d,mosi%d,miso%d,sck%d",
-             p.responded ? 1 : 0, p.r1, p.cmd8[0], p.cmd8[1], p.cmd8[2],
-             p.cmd8[3], p.cmd8[4], p.cmd8Ok ? 1 : 0, (int)activeProfile.sdCsPin,
-             (int)activeProfile.sdMosiPin, (int)activeProfile.sdMisoPin,
-             (int)activeProfile.sdSckPin);
-    TagNet::event(msg);
+    //
+    // Tries BOTH data-line orderings. A swapped MISO/MOSI is indistinguishable
+    // from a dead card at the mount layer — both are simply silence — and it
+    // is a mistake that would repeat identically across boards built to the
+    // same (wrong) assumption. Testing the swap here costs one command and
+    // settles it without rewiring or reflashing.
+    const struct {
+      const char *label;
+      int8_t mosi;
+      int8_t miso;
+    } orders[] = {
+        {"normal", activeProfile.sdMosiPin, activeProfile.sdMisoPin},
+        {"swapped", activeProfile.sdMisoPin, activeProfile.sdMosiPin},
+    };
+    for (const auto &o : orders) {
+      Storage::SdProbe p = Storage::sdProbeRaw(activeProfile.sdCsPin, o.mosi,
+                                               o.miso, activeProfile.sdSckPin);
+      char msg[176];
+      snprintf(msg, sizeof(msg),
+               "SDPROBE order=%s mosi=%d miso=%d responded=%d r1=0x%02X "
+               "cmd8=%02X%02X%02X%02X%02X v2=%d",
+               o.label, (int)o.mosi, (int)o.miso, p.responded ? 1 : 0, p.r1,
+               p.cmd8[0], p.cmd8[1], p.cmd8[2], p.cmd8[3], p.cmd8[4],
+               p.cmd8Ok ? 1 : 0);
+      TagNet::event(msg);
+      delay(50);
+    }
+  } else if (strcmp(line, "sdscan") == 0) {
+    // Exhaustive pin-permutation sweep over the four SD GPIOs. If ANY ordering
+    // gets the card to answer CMD0, the wiring differs from the netlist and
+    // this names the correct mapping. If none does, pin assignment is
+    // conclusively eliminated and the fault is power or connectivity —
+    // which is the more valuable answer, because it is otherwise
+    // indistinguishable from a wiring mistake.
+    const int8_t pins[4] = {activeProfile.sdCsPin, activeProfile.sdMosiPin,
+                            activeProfile.sdMisoPin, activeProfile.sdSckPin};
+    int hits = 0;
+    for (int a = 0; a < 4; a++) {
+      for (int b = 0; b < 4; b++) {
+        if (b == a) {
+          continue;
+        }
+        for (int c = 0; c < 4; c++) {
+          if (c == a || c == b) {
+            continue;
+          }
+          const int d = 6 - a - b - c; // the remaining index
+          Storage::SdProbe p =
+              Storage::sdProbeRaw(pins[a], pins[b], pins[c], pins[d]);
+          if (p.responded) {
+            hits++;
+            char msg[160];
+            snprintf(msg, sizeof(msg),
+                     "SDSCAN HIT cs=%d mosi=%d miso=%d sck=%d r1=0x%02X v2=%d",
+                     (int)pins[a], (int)pins[b], (int)pins[c], (int)pins[d],
+                     p.r1, p.cmd8Ok ? 1 : 0);
+            TagNet::event(msg);
+          }
+          delay(20);
+        }
+      }
+    }
+    char summary[96];
+    snprintf(summary, sizeof(summary),
+             "SDSCAN done: %d of 24 permutations answered", hits);
+    TagNet::event(summary);
   } else if (strcmp(line, "sdplay") == 0) {
     // Spike bench helper: mount the card, list /sfx/, and play one .wav
     // through the existing I2S path. Bypasses game state entirely.
