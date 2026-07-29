@@ -160,7 +160,7 @@ void test_serialize_config_golden() {
       "\"4\":\"#FFFFFF\"},\"teamSfx\":{\"1\":0,\"2\":2,\"3\":3,\"4\":5},"
       "\"deathSfx\":6,\"startHp\":32,\"damageMultiplier\":1,"
       "\"teamDamageMult\":{\"1\":0,\"2\":0,\"3\":0,\"4\":0},"
-      "\"chaseColour\":\"#FFA500\"}",
+      "\"chaseColour\":\"#FFA500\",\"startupSfx\":\"\"}",
       buf);
 }
 
@@ -614,6 +614,33 @@ void test_score_grid_quadrants() {
     for (int y = 4; y < 8; y++) grid_expect(grid, x, y, 4);
 }
 
+void test_patch_config_startup_sfx() {
+  ConfigDoc cfg;
+  // Default is "" = no startup sound.
+  TEST_ASSERT_EQUAL_STRING("", cfg.startupSfx);
+  PatchResult ok = applyConfigPatch("{\"startupSfx\":\"/sfx/startup.wav\"}", cfg);
+  TEST_ASSERT_TRUE(ok.ok);
+  TEST_ASSERT_EQUAL_STRING("/sfx/startup.wav", cfg.startupSfx);
+  // "" clears it back to none.
+  ok = applyConfigPatch("{\"startupSfx\":\"\"}", cfg);
+  TEST_ASSERT_TRUE(ok.ok);
+  TEST_ASSERT_EQUAL_STRING("", cfg.startupSfx);
+
+  // Type and length are enforced here; PATH SAFETY is the device's job.
+  cfg.startupSfx[0] = 'x';
+  cfg.startupSfx[1] = ' ';
+  PatchResult bad = applyConfigPatch("{\"startupSfx\":7}", cfg);
+  TEST_ASSERT_FALSE(bad.ok);
+  TEST_ASSERT_EQUAL_STRING("bad type: startupSfx", bad.error);
+  TEST_ASSERT_EQUAL_STRING("x", cfg.startupSfx);
+
+  char longJson[160];
+  snprintf(longJson, sizeof(longJson), "{\"startupSfx\":\"/%0*d\"}", 110, 0);
+  bad = applyConfigPatch(longJson, cfg);
+  TEST_ASSERT_FALSE(bad.ok);
+  TEST_ASSERT_EQUAL_STRING("x", cfg.startupSfx);
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(test_format_heartbeat_golden);
@@ -636,6 +663,7 @@ int main(int, char **) {
   RUN_TEST(test_patch_config_round_trip);
   RUN_TEST(test_patch_config_start_hp_valid_and_invalid);
   RUN_TEST(test_patch_config_own_team_valid_and_invalid);
+  RUN_TEST(test_patch_config_startup_sfx);
   RUN_TEST(test_patch_config_damage_multiplier_valid_and_invalid);
   RUN_TEST(test_patch_config_team_damage_mult);
   RUN_TEST(test_serialize_status_golden);

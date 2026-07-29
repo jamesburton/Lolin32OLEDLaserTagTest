@@ -22,7 +22,7 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
 
     private void Repl(CancellationToken stoppingToken)
     {
-        AnsiConsole.MarkupLine("[bold]LaserTag host[/] — commands: devices, start dm <dur> [[--kill N]] [[--hit N]] [[--waves <dur>]], start elim [[--timer <dur>]], start chase <dur|--first N> [[--min d]] [[--max d]] [[--gap d]] [[--penalty N]] [[--dark]], score, stop, reset [[id]], activate [[id]], deactivate [[id]], team <id|all> <0-4|none>, teams split <n>, fw [[bin]], ota <id|all> [[--force]] [[bin]], quit");
+        AnsiConsole.MarkupLine("[bold]LaserTag host[/] — commands: devices, start dm <dur> [[--kill N]] [[--hit N]] [[--waves <dur>]], start elim [[--timer <dur>]], start chase <dur|--first N> [[--min d]] [[--max d]] [[--gap d]] [[--penalty N]] [[--dark]], score, stop, reset [[id]], activate [[id]], deactivate [[id]], team <id|all> <0-4|none>, teams split <n>, sd <ls|put|get|rm|play|startup> …, fw [[bin]], ota <id|all> [[--force]] [[bin]], quit");
         while (!stoppingToken.IsCancellationRequested)
         {
             string? line = Console.ReadLine();
@@ -82,6 +82,9 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
                 break;
             case "team" or "teams":
                 RunTeam(args);
+                break;
+            case "sd":
+                RunSd(args);
                 break;
             case "fw":
                 PrintFirmware(args.ElementAtOrDefault(1));
@@ -334,6 +337,199 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
         else
         {
             AnsiConsole.MarkupLineInterpolated($"  [red]{id} FAILED[/]: {error}");
+        }
+    }
+
+    private readonly SdCardClient sd = new();
+
+    // sd ls <id> [dir] | sd put <id> <local> <remote> | sd get <id> <remote> <local>
+    // sd rm <id> <remote> | sd play <id> <remote> | sd startup <id> <remote|none>
+    private void RunSd(string[] args)
+    {
+        string? verb = args.ElementAtOrDefault(1)?.ToLowerInvariant();
+        string? id = args.ElementAtOrDefault(2);
+        if (verb is null || id is null)
+        {
+            AnsiConsole.MarkupLine(
+                "[yellow]usage: sd ls <id> [[dir]] | sd put <id> <local> <remote> | " +
+                "sd get <id> <remote> <local> | sd rm <id> <remote> | " +
+                "sd play <id> <remote> | sd startup <id> <remote|none>[/]");
+            return;
+        }
+
+        var entry = game.Devices().FirstOrDefault(e => e.Id == id);
+        if (entry is null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]no device with id {id}.[/]");
+            return;
+        }
+
+        string ip = entry.LastHeartbeat.Ip;
+        switch (verb)
+        {
+            case "ls":
+                SdList(ip, args.ElementAtOrDefault(3) ?? "/");
+                break;
+            case "put":
+                SdPut(ip, args.ElementAtOrDefault(3), args.ElementAtOrDefault(4));
+                break;
+            case "get":
+                SdGet(ip, args.ElementAtOrDefault(3), args.ElementAtOrDefault(4));
+                break;
+            case "rm":
+                SdRemove(ip, args.ElementAtOrDefault(3));
+                break;
+            case "play":
+                SdPlay(ip, args.ElementAtOrDefault(3));
+                break;
+            case "startup":
+                SdStartup(ip, args.ElementAtOrDefault(3));
+                break;
+            default:
+                AnsiConsole.MarkupLine("[yellow]unknown sd verb[/]");
+                break;
+        }
+    }
+
+    private void SdList(string ip, string dir)
+    {
+        SdCardClient.Result<SdListing> r = sd.ListAsync(ip, dir).GetAwaiter().GetResult();
+        if (!r.Ok || r.Value is null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]sd ls failed:[/] {r.Error}");
+            return;
+        }
+
+        SdListing listing = r.Value;
+        AnsiConsole.MarkupLineInterpolated(
+            $"card: [bold]{listing.UsedKb / 1024}[/] MB used of [bold]{listing.TotalKb / 1024}[/] MB — {listing.Path}");
+        var table = new Table().AddColumns("name", "size", "type");
+        foreach (SdEntry e in listing.Files)
+        {
+            table.AddRow(e.Name, e.IsDirectory ? "-" : e.Size.ToString(), e.IsDirectory ? "dir" : "file");
+        }
+
+        AnsiConsole.Write(table);
+    }
+
+    private void SdPut(string ip, string? local, string? remote)
+    {
+        if (local is null || remote is null)
+        {
+            AnsiConsole.MarkupLine("[yellow]usage: sd put <id> <local> <remote>[/]");
+            return;
+        }
+
+        SdCardClient.Result<bool> r = sd.UploadAsync(ip, local, remote).GetAwaiter().GetResult();
+        // if/else, not a ternary: a ternary collapses both arms to `string`,
+        // which binds MarkupLineInterpolated's string overload and re-enables
+        // markup parsing of the interpolated values (bit us before, e071754).
+        if (r.Ok)
+        {
+            AnsiConsole.MarkupLineInterpolated($"  [green]uploaded[/] {local} -> {remote}");
+        }
+        else
+        {
+            AnsiConsole.MarkupLineInterpolated($"  [red]upload failed:[/] {r.Error}");
+        }
+    }
+
+    private void SdGet(string ip, string? remote, string? local)
+    {
+        if (remote is null || local is null)
+        {
+            AnsiConsole.MarkupLine("[yellow]usage: sd get <id> <remote> <local>[/]");
+            return;
+        }
+
+        SdCardClient.Result<byte[]> r = sd.DownloadAsync(ip, remote).GetAwaiter().GetResult();
+        if (!r.Ok || r.Value is null)
+        {
+            AnsiConsole.MarkupLineInterpolated($"  [red]download failed:[/] {r.Error}");
+            return;
+        }
+
+        File.WriteAllBytes(local, r.Value);
+        AnsiConsole.MarkupLineInterpolated($"  [green]downloaded[/] {remote} -> {local} ({r.Value.Length} bytes)");
+    }
+
+    private void SdRemove(string ip, string? remote)
+    {
+        if (remote is null)
+        {
+            AnsiConsole.MarkupLine("[yellow]usage: sd rm <id> <remote>[/]");
+            return;
+        }
+
+        SdCardClient.Result<bool> r = sd.DeleteAsync(ip, remote).GetAwaiter().GetResult();
+        if (r.Ok)
+        {
+            AnsiConsole.MarkupLineInterpolated($"  [green]deleted[/] {remote}");
+        }
+        else
+        {
+            AnsiConsole.MarkupLineInterpolated($"  [red]delete failed:[/] {r.Error}");
+        }
+    }
+
+    private void SdPlay(string ip, string? remote)
+    {
+        if (remote is null)
+        {
+            AnsiConsole.MarkupLine("[yellow]usage: sd play <id> <remote>[/]");
+            return;
+        }
+
+        using var http = new HttpClient { BaseAddress = new Uri($"http://{ip}"), Timeout = TimeSpan.FromSeconds(15) };
+        var client = new LaserTagClient(http);
+        try
+        {
+            bool ok = client.SendCommandAsync(new CommandDoc { Cmd = "play", Path = remote })
+                .GetAwaiter().GetResult();
+            if (ok)
+            {
+                AnsiConsole.MarkupLineInterpolated($"  [green]playing[/] {remote}");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("  [red]device rejected the clip[/] (missing, or not 16 kHz/16-bit/mono)");
+            }
+        }
+        catch (LaserTagApiException ex)
+        {
+            AnsiConsole.MarkupLineInterpolated($"  [red]play failed:[/] {ex.Message}");
+        }
+    }
+
+    private void SdStartup(string ip, string? remote)
+    {
+        if (remote is null)
+        {
+            AnsiConsole.MarkupLine("[yellow]usage: sd startup <id> <remote|none>[/]");
+            return;
+        }
+
+        // "none" is the spelling the CLI accepts for "silent at boot"; the
+        // device stores an empty string.
+        string value = remote.Equals("none", StringComparison.OrdinalIgnoreCase) ? string.Empty : remote;
+        using var http = new HttpClient { BaseAddress = new Uri($"http://{ip}"), Timeout = TimeSpan.FromSeconds(10) };
+        var client = new LaserTagClient(http);
+        try
+        {
+            client.PatchConfigAsync(new Dictionary<string, object?> { ["startupSfx"] = value })
+                .GetAwaiter().GetResult();
+            if (value.Length == 0)
+            {
+                AnsiConsole.MarkupLine("  [green]startup sound cleared[/] (silent at boot)");
+            }
+            else
+            {
+                AnsiConsole.MarkupLineInterpolated($"  [green]startup sound set[/] -> {value}");
+            }
+        }
+        catch (LaserTagApiException ex)
+        {
+            AnsiConsole.MarkupLineInterpolated($"  [red]failed:[/] {ex.Message}");
         }
     }
 

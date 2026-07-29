@@ -30,6 +30,7 @@
 #include <BoardNvs.h>
 #include <HitDisplay.h>
 #include <SdCard.h>
+#include <SdPath.h>
 #include <Sound.h>
 #include <WavFile.h>
 
@@ -44,7 +45,7 @@ namespace cp = ControlProto;
 // Firmware version reported on the wire (contract §1.3 fw=). BUMP THIS on
 // every behavioural firmware change — the host's fleet updater compares it
 // against the built image to decide who needs an OTA (fleet-ota spec).
-#define LT_FW_VERSION "2.2.0"
+#define LT_FW_VERSION "2.3.0"
 static const char *kFirmwareVersion = LT_FW_VERSION;
 
 // Embedded marker so the host can read a firmware.bin's version by scanning
@@ -127,6 +128,20 @@ int gameoverWinner = 0;        // winning team for the gameover flood (0 = draw)
 
 Preferences nvs;
 
+// The EFFECTIVE board profile: compile-time defaults with the NVS overrides
+// applied. Board::active() returns the defaults only, so anything reading pins
+// at runtime must use this — otherwise an overridden SD/audio pin is honoured
+// by Sound::begin (which is handed the merged copy) but ignored everywhere
+// else. Populated in setup() before any consumer runs.
+Board::BoardProfile activeProfile;
+
+// Mounts the card on demand; defined with the SD REST handlers below.
+bool sdReady();
+
+// Plays a WAV from the microSD by path. Shared by the `play` command and the
+// boot startup cue so both validate, parse and free identically.
+bool playSdClip(const char *path);
+
 // --- NVS persistence --------------------------------------------------------
 
 // Persist the ConfigDoc NVS fields (contract §3). Returns false on any write
@@ -160,6 +175,7 @@ bool saveConfig() {
   }
   nvs.putString("hostname", config.hostname);
   nvs.putString("chaseCol", config.chaseColour); // NVS keys are max 15 chars
+  nvs.putString("startSfx", config.startupSfx);
   return true;
 }
 
@@ -227,6 +243,12 @@ void loadConfig() {
   String chc = nvs.getString("chaseCol", "#FFA500");
   strncpy(config.chaseColour, chc.c_str(), sizeof(config.chaseColour) - 1);
   config.chaseColour[sizeof(config.chaseColour) - 1] = '\0';
+
+  // Startup clip path. Default "" = silent at boot, so adding this feature
+  // changes no existing board's behaviour until one is configured.
+  String startSfx = nvs.getString("startSfx", "");
+  strncpy(config.startupSfx, startSfx.c_str(), sizeof(config.startupSfx) - 1);
+  config.startupSfx[sizeof(config.startupSfx) - 1] = '\0';
 }
 
 // --- LEDs -------------------------------------------------------------------
@@ -442,6 +464,11 @@ bool runCommand(const cp::CommandDoc &cmd) {
     }
     IrTx::fire(cp::tagEventFromVatosShot(cmd.team, cmd.damage));
     return true;
+  case cp::CommandKind::Play:
+    // Play a WAV straight off the card. Together with the /api/sd surface this
+    // is what makes sound content manageable remotely: upload a clip, play it,
+    // no cable and no reflash.
+    return playSdClip(cmd.path);
   case cp::CommandKind::None:
     return false;
   }
@@ -544,7 +571,7 @@ void onLine(const char *line) {
   } else if (strcmp(line, "sdplay") == 0) {
     // Spike bench helper: mount the card, list /sfx/, and play one .wav
     // through the existing I2S path. Bypasses game state entirely.
-    const Board::BoardProfile &prof = Board::active();
+    const Board::BoardProfile &prof = activeProfile;
     if (!prof.hasSdCard()) {
       Serial.println("[sd] sdplay: no SD card configured on this board");
     } else if (!Storage::sdBegin(prof.sdCsPin, prof.sdMosiPin, prof.sdMisoPin,
@@ -648,6 +675,15 @@ void handleConfig() {
     }
     cp::ConfigDoc staged = config; // apply onto a copy; commit only if NVS ok
     cp::PatchResult r = cp::applyConfigPatch(body.c_str(), staged);
+    // Path safety lives here rather than in ControlProto: that library is
+    // filesystem-agnostic, and this is the boundary where a LAN caller's
+    // string first becomes something we would open.
+    if (r.ok && strlen(staged.startupSfx) > 0 &&
+        !Storage::isSafeSdPath(staged.startupSfx)) {
+      sendJson(400, "{\"error\":\"startupSfx must be a safe absolute path "
+                    "(or \\\"\\\" for none)\"}");
+      return;
+    }
     if (!r.ok) {
       char err[80];
       snprintf(err, sizeof(err), "{\"error\":\"%s\"}", r.error);
@@ -763,6 +799,224 @@ void handleUpdateDone() {
   ESP.restart();
 }
 
+// --- microSD REST surface ---------------------------------------------------
+//
+// Remote management of the card's contents, so sound clips can be listed,
+// uploaded, fetched and removed without pulling the card or attaching USB.
+// Every caller-supplied path goes through Storage::isSafeSdPath first — it is
+// the only gate between a LAN request and the filesystem.
+
+// Pulls the ?path= query arg, validates it, and answers 4xx itself when it is
+// missing or unsafe. Returns false when the caller should stop.
+bool requireSdPath(WebServer &s, String &pathOut, const char *fallback) {
+  pathOut = s.hasArg("path") ? s.arg("path") : String(fallback);
+  if (pathOut.length() == 0) {
+    sendJson(400, "{\"error\":\"missing ?path=\"}");
+    return false;
+  }
+  if (!Storage::isSafeSdPath(pathOut.c_str())) {
+    sendJson(400,
+             "{\"error\":\"unsafe path — must start with / and contain no .. "
+             "segment\"}");
+    return false;
+  }
+  return true;
+}
+
+// Mounts on demand. The card is also mounted at boot, but a card inserted
+// afterwards (or a transient failure) should not need a reboot to recover.
+bool sdReady() {
+  const Board::BoardProfile &prof = activeProfile;
+  if (!prof.hasSdCard()) {
+    return false;
+  }
+  if (Storage::sdMounted()) {
+    return true;
+  }
+  return Storage::sdBegin(prof.sdCsPin, prof.sdMosiPin, prof.sdMisoPin,
+                          prof.sdSckPin);
+}
+
+bool playSdClip(const char *path) {
+  if (path == nullptr || strlen(path) == 0) {
+    return false; // "" means "no clip configured" — not an error
+  }
+  if (!Storage::isSafeSdPath(path) || !sdReady()) {
+    return false;
+  }
+  size_t len = 0;
+  uint8_t *buf = Storage::sdReadFile(path, len);
+  if (buf == nullptr) {
+    return false;
+  }
+  Storage::WavView view;
+  const char *err = nullptr;
+  const bool ok = Storage::parseWav(buf, len, view, err);
+  if (ok) {
+    Sound::playRaw(view.pcm, view.sampleCount);
+  } else {
+    Serial.printf("[sd] play '%s': WAV rejected (%s)\n", path, err);
+  }
+  // playRaw blocks until the clip has been written to I2S and the DMA has
+  // drained, so the buffer is fully consumed by the time it returns and is
+  // safe to free here. That also means a long clip stalls the loop — keep
+  // clips within the ~5 s idle watchdog (the 3 s quack was trimmed for
+  // exactly this reason).
+  free(buf);
+  return ok;
+}
+
+// GET /api/sd[?path=/dir] -> card status plus a directory listing.
+void handleSdList() {
+  const Board::BoardProfile &prof = activeProfile;
+  if (!prof.hasSdCard()) {
+    sendJson(404, "{\"error\":\"no SD card wired on this board\"}");
+    return;
+  }
+  if (!sdReady()) {
+    sendJson(503, "{\"present\":false,\"error\":\"card not mounted (absent or "
+                  "unreadable)\"}");
+    return;
+  }
+
+  String path;
+  if (!requireSdPath(TagNet::httpServer(), path, "/")) {
+    return;
+  }
+
+  uint64_t total = 0;
+  uint64_t used = 0;
+  Storage::sdUsage(total, used);
+
+  // Reported in kB: a 32-bit byte count would overflow on cards >4 GB, and
+  // Arduino's String has no 64-bit append.
+  String out = "{\"present\":true,\"totalKb\":";
+  out += (uint32_t)(total / 1024);
+  out += ",\"usedKb\":";
+  out += (uint32_t)(used / 1024);
+  out += ",\"path\":\"";
+  out += path;
+  out += "\",\"files\":[";
+
+  struct Ctx {
+    String *out;
+    bool first;
+  } ctx{&out, true};
+
+  Storage::sdListDetailed(
+      path.c_str(),
+      [](const Storage::SdEntry &e, void *raw) {
+        Ctx *c = (Ctx *)raw;
+        if (!c->first) {
+          *c->out += ',';
+        }
+        c->first = false;
+        *c->out += "{\"name\":\"";
+        *c->out += e.name;
+        *c->out += "\",\"size\":";
+        *c->out += e.size;
+        *c->out += ",\"dir\":";
+        *c->out += e.isDir ? "true" : "false";
+        *c->out += '}';
+      },
+      &ctx);
+
+  out += "]}";
+  TagNet::httpServer().send(200, "application/json", out);
+}
+
+// GET /api/sd/file?path=... -> the raw file.
+void handleSdDownload() {
+  if (!sdReady()) {
+    sendJson(503, "{\"error\":\"card not mounted\"}");
+    return;
+  }
+  String path;
+  if (!requireSdPath(TagNet::httpServer(), path, "")) {
+    return;
+  }
+  size_t len = 0;
+  uint8_t *buf = Storage::sdReadFile(path.c_str(), len);
+  if (buf == nullptr) {
+    sendJson(404, "{\"error\":\"not found or unreadable\"}");
+    return;
+  }
+  TagNet::httpServer().setContentLength(len);
+  TagNet::httpServer().send(200, "application/octet-stream", "");
+  TagNet::httpServer().client().write(buf, len);
+  free(buf);
+}
+
+// DELETE /api/sd/file?path=...
+void handleSdDelete() {
+  if (!sdReady()) {
+    sendJson(503, "{\"error\":\"card not mounted\"}");
+    return;
+  }
+  String path;
+  if (!requireSdPath(TagNet::httpServer(), path, "")) {
+    return;
+  }
+  if (!Storage::sdDelete(path.c_str())) {
+    sendJson(404, "{\"error\":\"not found, or is a directory\"}");
+    return;
+  }
+  sendJson(200, "{\"ok\":true}");
+}
+
+// Streamed upload half of POST /api/sd/file?path=... Mirrors the OTA handler:
+// the body is written straight to the card rather than buffered in RAM, so
+// clip size is bounded by the card, not by free heap.
+void handleSdUploadData() {
+  HTTPUpload &up = TagNet::httpServer().upload();
+  if (up.status == UPLOAD_FILE_START) {
+    String path;
+    // The query arg is still readable here; validate before opening anything.
+    if (!TagNet::httpServer().hasArg("path") ||
+        !Storage::isSafeSdPath(TagNet::httpServer().arg("path").c_str())) {
+      return; // the completion handler answers 400
+    }
+    path = TagNet::httpServer().arg("path");
+    if (sdReady()) {
+      Storage::sdWriteOpen(path.c_str());
+    }
+  } else if (up.status == UPLOAD_FILE_WRITE) {
+    if (!Storage::sdWriteChunk(up.buf, up.currentSize)) {
+      Storage::sdWriteAbort();
+    }
+  } else if (up.status == UPLOAD_FILE_END) {
+    Storage::sdWriteClose();
+  } else if (up.status == UPLOAD_FILE_ABORTED) {
+    Storage::sdWriteAbort();
+  }
+}
+
+// Completion half of POST /api/sd/file?path=...
+void handleSdUploadDone() {
+  if (!sdReady()) {
+    sendJson(503, "{\"error\":\"card not mounted\"}");
+    return;
+  }
+  String path;
+  if (!requireSdPath(TagNet::httpServer(), path, "")) {
+    return;
+  }
+  bool isDir = false;
+  if (!Storage::sdExists(path.c_str(), isDir) || isDir) {
+    sendJson(500, "{\"error\":\"upload failed — nothing written\"}");
+    return;
+  }
+  size_t len = 0;
+  uint8_t *buf = Storage::sdReadFile(path.c_str(), len);
+  const uint32_t size = (uint32_t)len;
+  free(buf);
+
+  char out[96];
+  snprintf(out, sizeof(out), "{\"ok\":true,\"path\":\"%s\",\"size\":%u}",
+           path.c_str(), (unsigned)size);
+  sendJson(200, out);
+}
+
 // Minimal browser upload page (GET /update) posting to /api/update, so a
 // single board can be flashed tool-free from any browser on the LAN.
 void handleUpdatePage() {
@@ -782,6 +1036,19 @@ void registerRoutes() {
   WebServer &s = TagNet::httpServer();
   s.on("/api/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);
   s.on("/update", HTTP_GET, handleUpdatePage);
+
+  // microSD management. /api/sd/file carries three methods: POST streams an
+  // upload (hence the two-handler form), GET downloads, DELETE removes.
+  s.on("/api/sd", HTTP_ANY, []() {
+    if (TagNet::httpServer().method() == HTTP_GET) {
+      handleSdList();
+    } else {
+      sendJson(405, "{\"error\":\"method not allowed\"}");
+    }
+  });
+  s.on("/api/sd/file", HTTP_POST, handleSdUploadDone, handleSdUploadData);
+  s.on("/api/sd/file", HTTP_GET, handleSdDownload);
+  s.on("/api/sd/file", HTTP_DELETE, handleSdDelete);
   s.on("/api/status", HTTP_ANY, []() {
     if (TagNet::httpServer().method() == HTTP_GET) {
       handleStatus();
@@ -804,10 +1071,21 @@ void setup() {
   // (the host's fleet updater scans firmware.bin for it).
   Serial.printf("boot %s\n", kFwMarker);
 
-  Board::BoardProfile profile = Board::active();
-  BoardNvs::loadOverrides(profile);
+  activeProfile = Board::active();
+  BoardNvs::loadOverrides(activeProfile);
+  Board::BoardProfile &profile = activeProfile;
   HitDisplay::begin(profile, teamColourHex);
   Sound::begin(profile);
+
+  // Mount the card at boot so /api/sd can answer without a first-request
+  // delay. A failure here is not fatal — the board plays its embedded bank
+  // regardless, and sdReady() retries on demand so a card inserted later
+  // works without a reboot.
+  if (profile.hasSdCard()) {
+    Storage::sdBegin(profile.sdCsPin, profile.sdMosiPin, profile.sdMisoPin,
+                     profile.sdSckPin);
+  }
+
   HitDisplay::solid({0, 0, 8}); // dim blue: starting / WiFi config
 
   // Resistor-less activity LED: minimum drive strength protects the pin
@@ -836,6 +1114,18 @@ void setup() {
   randomSeed(esp_random());
 
   vis = Vis::Rainbow;
+
+  // Startup cue, last so the board is fully up before it blocks on playback.
+  // Silent unless config.startupSfx names a clip on the card — the default is
+  // "" precisely so this changes nothing for an unconfigured board.
+  if (config.startupSfx[0] != '\0') {
+    Serial.printf("[sfx] startup clip '%s'\n", config.startupSfx);
+    if (!playSdClip(config.startupSfx)) {
+      Serial.println("[sfx] startup clip failed (missing, unreadable or not "
+                     "16 kHz/16-bit/mono)");
+    }
+  }
+
   emitState("ready", hp);
 }
 

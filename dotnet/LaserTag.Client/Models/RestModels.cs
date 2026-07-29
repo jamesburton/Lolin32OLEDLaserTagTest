@@ -142,4 +142,11 @@ public sealed record CommandDoc
     [JsonPropertyName("damage")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? Damage { get; init; }
+
+    /// <summary>
+    /// Gets the optional microSD path for <c>play</c>, e.g. <c>/sfx/startup.wav</c>.
+    /// </summary>
+    [JsonPropertyName("path")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Path { get; init; }
 }

@@ -323,6 +323,7 @@ size_t serializeConfig(const ConfigDoc &cfg, char *out, size_t outSize) {
     dmg[key] = cfg.teamDamageMult[i];
   }
   doc["chaseColour"] = cfg.chaseColour;
+  doc["startupSfx"] = cfg.startupSfx;
   return serializeJson(doc, out, outSize);
 }
 
@@ -444,6 +445,21 @@ PatchResult applyConfigPatch(const char *json, ConfigDoc &cfg) {
           }
         }
       }
+    } else if (strcmp(key, "startupSfx") == 0) {
+      // "" means none. The PATH's safety is checked by the device (which owns
+      // the filesystem); this only enforces type and length so an overlong
+      // value can never overrun the fixed buffer.
+      if (!kv.value().is<const char *>()) {
+        snprintf(res.error, sizeof(res.error), "bad type: startupSfx");
+        return res;
+      }
+      const char *v = kv.value().as<const char *>();
+      if (strlen(v) >= sizeof(staged.startupSfx)) {
+        snprintf(res.error, sizeof(res.error), "startupSfx too long");
+        return res;
+      }
+      strncpy(staged.startupSfx, v, sizeof(staged.startupSfx) - 1);
+      staged.startupSfx[sizeof(staged.startupSfx) - 1] = 0;
     } else if (strcmp(key, "chaseColour") == 0) {
       if (!kv.value().is<const char *>()) {
         snprintf(res.error, sizeof(res.error), "bad type: chaseColour");
@@ -555,6 +571,18 @@ bool parseCommand(const char *json, CommandDoc &out) {
     out.kind = CommandKind::Hit;
     out.team = doc["team"].as<int>();
     out.damage = doc["damage"].as<int>();
+    return true;
+  }
+  if (strcmp(cmd, "play") == 0) {
+    // The path is copied verbatim; SAFETY is the device's job (isSafeSdPath)
+    // rather than the parser's, so the same check guards every entry point.
+    JsonVariant pathVar = doc["path"];
+    if (!pathVar.is<const char *>()) {
+      return false;
+    }
+    out.kind = CommandKind::Play;
+    strncpy(out.path, pathVar.as<const char *>(), sizeof(out.path) - 1);
+    out.path[sizeof(out.path) - 1] = 0;
     return true;
   }
   if (strcmp(cmd, "debug") == 0) {

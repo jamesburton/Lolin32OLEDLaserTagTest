@@ -77,4 +77,165 @@ uint8_t *sdReadFile(const char *path, size_t &len) {
   return buf;
 }
 
+bool sdMounted() { return mounted; }
+
+bool sdUsage(uint64_t &totalBytes, uint64_t &usedBytes) {
+  totalBytes = 0;
+  usedBytes = 0;
+  if (!mounted) {
+    return false;
+  }
+  totalBytes = SD.totalBytes();
+  usedBytes = SD.usedBytes();
+  return true;
+}
+
+size_t sdListDetailed(const char *path,
+                      void (*onEntry)(const SdEntry &entry, void *ctx),
+                      void *ctx) {
+  if (!mounted) {
+    return 0;
+  }
+  File dir = SD.open(path);
+  if (!dir || !dir.isDirectory()) {
+    return 0;
+  }
+  size_t count = 0;
+  File entry = dir.openNextFile();
+  while (entry) {
+    SdEntry e;
+    // name() returns the full path on some core versions; report the leaf so
+    // callers get a stable shape regardless.
+    const char *full = entry.name();
+    const char *slash = strrchr(full, '/');
+    e.name = slash != nullptr ? slash + 1 : full;
+    e.isDir = entry.isDirectory();
+    e.size = e.isDir ? 0 : (uint32_t)entry.size();
+    onEntry(e, ctx);
+    count++;
+    entry.close();
+    entry = dir.openNextFile();
+  }
+  dir.close();
+  return count;
+}
+
+bool sdExists(const char *path, bool &isDir) {
+  isDir = false;
+  if (!mounted) {
+    return false;
+  }
+  File f = SD.open(path);
+  if (!f) {
+    return false;
+  }
+  isDir = f.isDirectory();
+  f.close();
+  return true;
+}
+
+bool sdDelete(const char *path) {
+  bool isDir = false;
+  if (!sdExists(path, isDir)) {
+    Serial.printf("[sd] delete: '%s' not found\n", path);
+    return false;
+  }
+  if (isDir) {
+    Serial.printf("[sd] delete: '%s' is a directory — refused\n", path);
+    return false;
+  }
+  const bool ok = SD.remove(path);
+  Serial.printf("[sd] delete '%s': %s\n", path, ok ? "ok" : "FAILED");
+  return ok;
+}
+
+bool sdMakeDir(const char *path) {
+  if (!mounted) {
+    return false;
+  }
+  bool isDir = false;
+  if (sdExists(path, isDir)) {
+    return isDir;
+  }
+  return SD.mkdir(path);
+}
+
+namespace {
+File writeFile;
+char writePath[128] = "";
+uint32_t writtenBytes = 0;
+
+// Creates every parent directory of a file path. SD.open(..., FILE_WRITE)
+// fails outright if the directory is missing, so an upload to a new folder
+// would otherwise fail for a reason the caller can't act on.
+void ensureParentDirs(const char *path) {
+  char buf[128];
+  strncpy(buf, path, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  for (char *p = buf + 1; *p != '\0'; p++) {
+    if (*p != '/') {
+      continue;
+    }
+    *p = '\0';
+    if (!SD.exists(buf)) {
+      SD.mkdir(buf);
+    }
+    *p = '/';
+  }
+}
+} // namespace
+
+bool sdWriteOpen(const char *path) {
+  if (!mounted) {
+    Serial.println("[sd] write: not mounted");
+    return false;
+  }
+  if (writeFile) {
+    Serial.println("[sd] write: another upload is already open");
+    return false;
+  }
+  ensureParentDirs(path);
+  writeFile = SD.open(path, FILE_WRITE);
+  if (!writeFile) {
+    Serial.printf("[sd] write: could not open '%s'\n", path);
+    return false;
+  }
+  strncpy(writePath, path, sizeof(writePath) - 1);
+  writePath[sizeof(writePath) - 1] = '\0';
+  writtenBytes = 0;
+  return true;
+}
+
+bool sdWriteChunk(const uint8_t *data, size_t len) {
+  if (!writeFile) {
+    return false;
+  }
+  const size_t wrote = writeFile.write(data, len);
+  writtenBytes += (uint32_t)wrote;
+  return wrote == len;
+}
+
+uint32_t sdWriteClose() {
+  if (!writeFile) {
+    return 0;
+  }
+  writeFile.close();
+  Serial.printf("[sd] wrote '%s' (%u bytes)\n", writePath,
+                (unsigned)writtenBytes);
+  return writtenBytes;
+}
+
+void sdWriteAbort() {
+  if (!writeFile) {
+    return;
+  }
+  writeFile.close();
+  // Remove the partial file: a truncated WAV would be accepted by the upload
+  // and then fail at play time, which is a far more confusing failure.
+  SD.remove(writePath);
+  Serial.printf("[sd] upload of '%s' aborted, partial file removed\n",
+                writePath);
+  writtenBytes = 0;
+}
+
 } // namespace Storage

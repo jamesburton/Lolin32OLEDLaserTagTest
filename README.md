@@ -340,6 +340,38 @@ future phone app — no espota/python needed. Spec:
 `docs/superpowers/specs/2026-07-27-fleet-ota-design.md`. Boards on older
 firmware need one last espota flash to gain the endpoint.
 
+### microSD contents (firmware ≥ 2.3.0)
+
+Sound clips live on the board's microSD and are managed remotely — no cable, no
+pulling the card:
+
+```sh
+sd ls <id> [dir]              # card usage + directory listing
+sd put <id> <local> <remote>  # upload, e.g. sd put eb278c assets/sfx/startup-rise.wav /sfx/startup.wav
+sd get <id> <remote> <local>  # download
+sd rm  <id> <remote>          # delete (files only; directories are refused)
+sd play <id> <remote>         # play a clip now
+sd startup <id> <remote|none> # set/clear the power-on cue
+```
+
+The same operations are a REST surface on each board: `GET /api/sd?path=`,
+`POST|GET|DELETE /api/sd/file?path=`, and `POST /api/command {"cmd":"play",
+"path":"…"}`.
+
+**Clips must be 16 kHz / 16-bit / mono WAV** — the parser rejects anything else
+rather than converting it. Generate one with
+`python tools/gen_sfx.py --wav out.wav --clip startup|death`. Keep clips under
+~5 s: playback blocks the main loop, and a longer clip trips the idle watchdog.
+
+> **Startup sound defaults to none.** Set it per board with `sd startup`; it is
+> stored as `startupSfx` in the device config and played once at the end of
+> boot. An unset, missing or malformed clip is silently skipped so a board
+> always comes up.
+
+> Every caller-supplied path is validated on the device: it must be absolute
+> and contain no `..` segment. That check is the only thing between a LAN
+> request and the card's filesystem, so it is unit-tested natively.
+
 ### Teams (firmware ≥ 2.2.0)
 
 A device's team lives in its **persisted config** (`ownTeam`), not the control

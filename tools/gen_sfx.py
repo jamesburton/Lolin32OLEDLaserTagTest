@@ -72,6 +72,34 @@ def synth_siren(seconds, freq_fn):
     return np.clip(x * 32767.0, -32768, 32767).astype(np.int16)
 
 
+def synth_startup(seconds=1.1):
+    """A confident rising tone for the power-on cue.
+
+    A single upward glide reads as "coming up" rather than as a game event:
+    the per-team hit sirens sweep and the death cue falls, so rising is the one
+    gesture not already spoken for. Two octave-spaced partials give it body on
+    the small MAX98357A speaker, where a pure sine sounds thin, and the chirp
+    is exponential rather than linear because pitch is perceived
+    logarithmically -- a linear ramp sounds like it stalls at the top.
+    """
+    t = np.arange(int(seconds * RATE)) / RATE
+    f0, f1 = 320.0, 1280.0                               # two octaves up
+    f = f0 * (f1 / f0) ** (t / seconds)                  # exponential chirp
+    phase = 2 * np.pi * np.cumsum(f) / RATE
+    x = np.sin(phase) + 0.3 * np.sin(2 * phase)          # + octave for body
+
+    env = np.ones_like(x)
+    a = int(0.015 * RATE)                                # short attack, no click
+    env[:a] = np.linspace(0.0, 1.0, a)
+    env *= np.linspace(0.75, 1.0, len(env))              # swell into the top
+    x *= env
+
+    x /= np.max(np.abs(x))
+    fade = int(FADE_MS * RATE / 1000)
+    x[-fade:] *= np.linspace(1.0, 0.0, fade)
+    return np.clip(x * 32767.0, -32768, 32767).astype(np.int16)
+
+
 def write_wav(path, samples_int16, rate=RATE):
     """Write a single int16 PCM clip to a standard 16 kHz/16-bit/mono WAV
     file, e.g. for copying onto an SD card as a hardware test fixture."""
@@ -86,13 +114,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--wav", metavar="OUTPUT.wav",
-        help="Write the death cue clip's PCM samples to a standalone WAV "
-             "file (16 kHz/16-bit/mono) instead of generating SfxData.h. "
-             "Intended for producing SD-card hardware test clips.")
+        help="Write one clip's PCM samples to a standalone WAV file "
+             "(16 kHz/16-bit/mono) instead of generating SfxData.h. "
+             "Intended for producing SD-card clips.")
+    parser.add_argument(
+        "--clip", choices=("death", "startup"), default="death",
+        help="Which clip --wav should write. 'startup' is the rising "
+             "power-on tone; 'death' is the existing death cue (default).")
     args = parser.parse_args()
 
     if args.wav:
-        pcm = synth_death()
+        pcm = synth_startup() if args.clip == "startup" else synth_death()
         write_wav(args.wav, pcm)
         print(f"Wrote {os.path.normpath(args.wav)}: "
               f"{len(pcm)/RATE:.2f}s  {len(pcm) * 2 / 1024:.1f} KB")

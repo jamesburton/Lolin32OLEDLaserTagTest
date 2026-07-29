@@ -244,6 +244,18 @@ struct ConfigDoc {
   int teamDamageMult[TeamColourCount] = {0, 0, 0, 0}; ///< per-SHOOTER-team
       ///< override (handicap), keyed like teamSfx; 0 = inherit the global
   char chaseColour[8] = "#FFA500"; ///< chase active spin colour
+
+  /// <summary>
+  /// Absolute microSD path of a clip played once at boot, or "" for none
+  /// (the default).
+  /// </summary>
+  /// <remarks>
+  /// A PATH rather than a bank index: the embedded SFX bank is fixed at build
+  /// time, so a configurable startup sound has to come off the card. This is
+  /// the first of the sound settings to move to paths (backlog 8b); the
+  /// per-team and death cues still use bank indices.
+  /// </remarks>
+  char startupSfx[96] = "";
 };
 
 /// <summary>Serializes a ConfigDoc into the contract §2.2 ConfigDoc JSON.</summary>
@@ -333,6 +345,7 @@ enum class CommandKind {
   Debug,    ///< `{ "cmd": "debug", "value": <int> }`
   Reset,    ///< `{ "cmd": "reset" }` — revive to full health (CTL reset parity)
   Fire,     ///< `{ "cmd": "fire", "team": <int>, "damage": <int> }` — emit a Vatos IR shot
+  Play,     ///< `{ "cmd": "play", "path": "/sfx/x.wav" }` — play a WAV from the microSD
 };
 
 /// <summary>Parsed POST /api/command body (contract §2.2 CommandDoc).</summary>
@@ -341,6 +354,10 @@ struct CommandDoc {
   int value = 0;  ///< bright/debug value
   int team = 0;   ///< hit team
   int damage = 0; ///< hit damage
+
+  /// Play: absolute path of a WAV on the microSD. Bounded by
+  /// Storage::MaxSdPathLength; the device validates it before opening.
+  char path[96] = "";
 };
 
 /// <summary>
