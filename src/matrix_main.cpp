@@ -632,6 +632,13 @@ void onLine(const char *line) {
     // is a mistake that would repeat identically across boards built to the
     // same (wrong) assumption. Testing the swap here costs one command and
     // settles it without rewiring or reflashing.
+    // Blank the matrix first. 64 WS2812s are the biggest load on the board's
+    // rails, and an SD card draws its peak current during init — if the supply
+    // is marginal, the card browns out exactly when it is being probed. This
+    // removes that variable; the visual state machine repaints on the next tick.
+    HitDisplay::dark();
+    delay(50);
+
     const struct {
       const char *label;
       int8_t mosi;
@@ -653,6 +660,44 @@ void onLine(const char *line) {
       TagNet::event(msg);
       delay(50);
     }
+  } else if (strcmp(line, "sdpins") == 0) {
+    // Electrical presence test, no card protocol involved.
+    //
+    // Each pin is read twice: once with the ESP32's internal pull-DOWN and once
+    // with its internal pull-UP. The internal pulls are weak (~45 kohm), so any
+    // external resistor or driver overrides them, and comparing the two reads
+    // says what is actually attached:
+    //   pd=0 pu=1  -> floating: NOTHING is connected to this pin
+    //   pd=1 pu=1  -> held high externally: a powered module with pull-ups
+    //   pd=0 pu=0  -> held low externally: shorted to GND
+    // A microSD breakout presents pull-ups on CS/MISO when powered, so "all
+    // floating" means the module is not wired to these GPIOs (or is unpowered),
+    // which is exactly the distinction the mount layer cannot make.
+    const struct {
+      const char *name;
+      int8_t pin;
+    } sdPins[] = {{"cs", activeProfile.sdCsPin},
+                  {"mosi", activeProfile.sdMosiPin},
+                  {"miso", activeProfile.sdMisoPin},
+                  {"sck", activeProfile.sdSckPin}};
+    char msg[192];
+    int used = snprintf(msg, sizeof(msg), "SDPINS");
+    for (const auto &sp : sdPins) {
+      pinMode(sp.pin, INPUT_PULLDOWN);
+      delay(2);
+      const int pd = digitalRead(sp.pin);
+      pinMode(sp.pin, INPUT_PULLUP);
+      delay(2);
+      const int pu = digitalRead(sp.pin);
+      pinMode(sp.pin, INPUT);
+      const char *verdict = (pd == 0 && pu == 1)   ? "FLOATING"
+                            : (pd == 1 && pu == 1) ? "pulled-high"
+                            : (pd == 0 && pu == 0) ? "pulled-low"
+                                                   : "odd";
+      used += snprintf(msg + used, sizeof(msg) - used, " %s=%d(pd%d/pu%d,%s)",
+                       sp.name, (int)sp.pin, pd, pu, verdict);
+    }
+    TagNet::event(msg);
   } else if (strcmp(line, "sdscan") == 0) {
     // Exhaustive pin-permutation sweep over the four SD GPIOs. If ANY ordering
     // gets the card to answer CMD0, the wiring differs from the netlist and
