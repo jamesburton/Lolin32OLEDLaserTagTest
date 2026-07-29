@@ -198,12 +198,24 @@ Changes are saved to NVS and applied on the next reboot.
 ### OTA updates
 
 After one USB flash + WiFi provisioning, update over the air — no cable, no
-GPIO0 jumper:
+GPIO0 jumper.
+
+**For the S3 fleet, prefer the host's `ota` command** (see
+[Game manager](#game-manager-host)): every board now runs 2.1.0, which serves
+`POST /api/update`, so `ota all` flashes the whole fleet over HTTP with no
+Python and no per-board IP chasing. The espota route below is now only needed
+to **bootstrap a board running pre-2.1.0 firmware** (it has no `/api/update`),
+and for the Lolin32.
 
 ```sh
-pio run -e lolin32-ota -t upload          # -> 192.168.1.48 (lasertag-lolin32)
-pio run -e esp32-s3-matrix-ota -t upload  # -> 192.168.1.33 (lasertag-matrix)
+pio run -e lolin32-ota -t upload          # -> lasertag-lolin32 (IP in platformio.ini)
+pio run -e esp32-s3-matrix-ota -t upload  # -> lasertag-matrix  (IP in platformio.ini)
 ```
+
+> ⚠ `ota all` sends **one binary to every online outdated board** and cannot
+> tell an ESP32 from an ESP32-S3 (heartbeats carry no chip field). With the
+> **Lolin32 (ESP32)** on the network alongside the S3 fleet, target it
+> explicitly with `ota <id>` rather than `all`.
 
 Both `*-ota` envs target the boards' **IP addresses** in `platformio.ini`.
 mDNS (`lasertag-*.local`) resolves fine for ping/REST on this dev machine, but
@@ -220,9 +232,18 @@ port 4210 (see [Control plane](#control-plane-v2) for the grammar). The
 
 ```sh
 dotnet run --project tools/TagMonitor
-# lasertag-matrix HB id=752b38 ip=192.168.1.24 fw=2.0.0 team=2 mode=idle hp=100 online=1
-# lasertag-matrix EVT hit victim=752b38 shooterTeam=2 dmg=2 proto=vatos hp=80 ts=12345
+# lasertag-matrix HB id=752b38 ip=192.168.1.34 fw=2.1.0 team=2 mode=idle hp=32 online=1
+# lasertag-matrix EVT hit victim=752b38 shooterTeam=2 dmg=2 proto=vatos hp=30 ts=12345
 ```
+
+> `mode=` in a heartbeat is the board's **role** (`idle`/`target`/`scoreboard`),
+> **not** the match phase — a board reads `mode=idle` throughout a running
+> match. There is no per-board match-phase readback; the host is authoritative.
+
+**Discovering boards:** listen to the heartbeat roster (TagMonitor, the host's
+`devices`, or either manager) and give it **~30 s**. Don't port-scan the subnet
+— it misses boards that answer slowly, and every board roams on DHCP, so any IP
+written down here or in `platformio.ini` may already belong to something else.
 
 > **No telemetry but REST works?** That's a missing inbound firewall rule **or**
 > a lossy weak-RSSI link. Rule out the firewall with `tools/setup-firewall.ps1`
@@ -316,6 +337,17 @@ form at `GET /update`, so updates work from the host CLI, a browser, or the
 future phone app — no espota/python needed. Spec:
 `docs/superpowers/specs/2026-07-27-fleet-ota-design.md`. Boards on older
 firmware need one last espota flash to gain the endpoint.
+
+> ⚠ **Teams must be assigned per board, out of band.** A match reads each
+> device's `ownTeam` from its heartbeat and snapshots it at start; nothing in
+> the host, web or Android manager can change it. Set it before starting:
+> `curl -X PATCH http://<board-ip>/api/config -d '{"ownTeam":1}'`. Boards
+> default to team 2, so a fresh fleet is all one team — every hit is friendly
+> fire and no team can win.
+
+> ⚠ **The lobby is fixed at match start.** Devices that come online after the
+> countdown are ignored for the rest of the match (a device that *drops and
+> returns* does rejoin, and gets a re-issued `CTL start id=`).
 
 Match rules live in `dotnet/LaserTag.Game` (`IGameMode`: Deathmatch,
 Elimination, Chase — see `docs/superpowers/specs/2026-07-27-chase-mode-design.md`).
@@ -530,7 +562,7 @@ multiple team/damage codes, and `decode()` was verified against real gun fire.
 
 ---
 
-## RF (2.4 GHz) probe — paused, no signal found
+## RF (2.4 GHz) probe — CLOSED, no signal found
 
 A side investigation into whether the Vatos kit also uses a 2.4 GHz link
 alongside its IR. **Result: nothing was detected**, and the leading explanation

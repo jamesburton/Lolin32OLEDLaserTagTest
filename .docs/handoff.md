@@ -8,6 +8,31 @@ Codes & features behind interfaces so other guns/protocols and boards plug in.
 
 ## Current State
 
+### FLEET ON 2.1.0 + first 4-board integration test PASSED (2026-07-29)
+First session with **all four S3 boards powered at once**. Boards 1 (`752b38`)
+and 2 (`eb278c`) were still on the pre-2.1.0 image, so each got its one
+bootstrap espota; boards 3+4 were already current. **Fleet is now uniformly
+2.1.0, so `ota all` over HTTP covers every board — espota is retired** (except
+for a future board's first flash, and for the Lolin32, which is offline).
+
+**Integration test (54 assertions across two runs, all green).** Driven through
+the web manager's JSON API — the same surface the phone app uses — while
+reading each board's own `/api/status` back directly, so a host-vs-board
+disagreement would show rather than hide. Scripts are throwaway (scratchpad),
+but the method is worth repeating:
+- **Verified on all four:** `identify`; `bright` (round-tripped through
+  `/api/config`); `hit`; `reset`; `CTL start`/`stop`; and the telemetry path —
+  every board's hp drop reached the host within ~6 s, a full kill scored team 1
+  and flipped `alive=false`, and the match ran Countdown → Running → Finished.
+- **`CTL start` reaching a board is observable via hp**, not via `mode`: Start
+  sets `hp = config.startHp`, so damage the fleet, start a match, and watch all
+  boards return to 32 with no explicit reset. This is the check to reuse.
+- **Two things this did NOT prove.** All damage was synthetic `{"cmd":"hit"}`
+  over HTTP, which exercises scoring but **not the IR path** — a `fire` from
+  one board registered on nothing (expected; nothing was aimed). And
+  **activate/deactivate remains unconfirmed**: it changes `vis` only, which is
+  not exposed over REST, so it needs an eyeball on the panels.
+
 ### Web + Android managers SHIPPED (2026-07-28) — one UI, one engine, two shells
 Spec: `docs/superpowers/specs/2026-07-28-managers-design.md`. Supersedes
 `docs/android-controller-options.md` (both its Option B and Option C are built).
@@ -288,17 +313,25 @@ all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
 
 ## Hardware (all live on HAL firmware, OTA-flashable)
 
-### S3-Matrix fleet (4 boards, 2026-07-27) — hostnames persisted in NVS
-| # | Hostname (mDNS .local) | Last IP | deviceId | Firmware |
-|---|---|---|---|---|
-| 1 | `lasertag-matrix` | .34 | `752b38` | **2.0.0-era — espota once when powered, then HTTP** |
-| 2 | `lasertag-matrix2` | .180 | `eb278c` | **2.0.0-era — espota once when powered, then HTTP** |
-| 3 | `lasertag-matrix3` | .225 | `eb20f8` | ✅ 2.1.0 (chase + /api/update; HTTP-OTA proven) |
-| 4 | `lasertag-matrix4` | .218 | `e45614` | ✅ 2.1.0 (chase + /api/update) |
+### S3-Matrix fleet (4 boards) — WHOLE FLEET ON 2.1.0 (2026-07-29) ✅
+Hostnames persisted in NVS. Verified together on 2026-07-29 (all four powered
+and online simultaneously for the first time).
 
-Boards 1+2 are healthy but **unpowered** (not enough power leads); the moment
-they're powered, OTA them (`espota -i <ip> -I <pc-ip>`) — until then they're on
-pre-`id=`-filter firmware and MUST NOT join multi-device matches. WiFi
+| # | Hostname (mDNS .local) | Last IP | deviceId | Firmware | RSSI |
+|---|---|---|---|---|---|
+| 1 | `lasertag-matrix` | .34 | `752b38` | ✅ 2.1.0 (espota'd 2026-07-29) | −77 |
+| 2 | `lasertag-matrix2` | .180 | `eb278c` | ✅ 2.1.0 (espota'd 2026-07-29) | −70 |
+| 3 | `lasertag-matrix3` | .225 | `eb20f8` | ✅ 2.1.0 | −81 |
+| 4 | `lasertag-matrix4` | .218 | `e45614` | ✅ 2.1.0 | −74 |
+
+**The whole fleet now has `/api/update`, so `ota all` works — espota is no
+longer needed for any board.** Boards 1+2 were on the pre-2.1.0 image (no
+`/api/update`), so each needed exactly one bootstrap espota:
+`python ~/.platformio/packages/framework-arduinoespressif32/tools/espota.py
+-i <board-ip> -I <pc-lan-ip> -p 3232 -f .pio/build/esp32-s3-matrix-ota/firmware.bin -r`
+(the `-I` host IP is required; without it the board's ack has nowhere to go).
+The `id=` filter is now enforced fleet-wide, so **all four are cleared for
+multi-device matches**. WiFi
 provisioning for a fresh board: `tools/set-wifi.ps1 -Port COMx` (creds
 extractable via `netsh wlan show profile ... key=clear`); hostname via
 `PATCH /api/config {"hostname":...}` + reboot (boot reads it from NVS since
@@ -317,7 +350,12 @@ extractable via `netsh wlan show profile ... key=clear`); hostname via
   (`CommandKind::Fire`); verified end-to-end (self-RX loopback registers exact
   damage). Bench uses a bare LED+220Ω = short range; **PCB uses a 2N2222A driver
   from 5V** (see Board BOM). Retaliation auto-fire still TODO (Next Steps #5).
-- **Lolin32 OLED** (monitor/target): WiFi **192.168.1.48**, fw 2.0.0. IR RX GPIO25,
+- **Lolin32 OLED** (monitor/target): ⚠ **OFFLINE as of 2026-07-29** and its
+  recorded IP is stale — 192.168.1.48 now answers ping but refuses port 80, so
+  DHCP has reassigned it. Re-discover via the heartbeat roster (below) after
+  powering it, not by its old address. ⚠ **It is an ESP32, not an ESP32-S3** —
+  see the `ota all` cross-chip hazard in Gotchas. Last known: fw 2.0.0 (so it
+  needs one bootstrap espota, like boards 1+2 did). IR RX GPIO25,
   IR TX GPIO13, OLED (SSD1306 128×32, SDA5/SCL4), act LED GPIO26, external 8×8
   WS2812 on **GPIO14** (**GRB** order — assumed; verify if colours look off).
   Refactored onto the HAL: IR monitor/decode/OLED + IrTx + panel idle rainbow.
@@ -446,6 +484,24 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   a device reboot mid-match revives it (hp volatile) — accepted for now.
 
 ## Gotchas (carry forward — these cost real time)
+- **Discover boards by the heartbeat roster, NOT by scanning the subnet.** An
+  HTTP sweep of all 254 addresses found only 1 of the 2 boards that were up
+  (slow boards time out before answering), while the UDP roster found both.
+  Allow **~30 s** of listening, not 10 — a short window shows an empty table
+  and looks exactly like "no boards". Board IPs in these docs are ALWAYS
+  suspect: everything roams on DHCP, and a stale IP may now answer as some
+  other device entirely (`.48` did).
+- **`ota all` does not check the board type — it pushes ONE binary to every
+  online outdated board.** Heartbeats carry no chip/model field, so if the
+  **Lolin32 (ESP32)** is online alongside the S3 fleet it will be sent the
+  **ESP32-S3** image. ESP-IDF's image validation should reject the wrong
+  chip id and leave the board on its old firmware, but **this has never been
+  tested** — until it is, use `ota <id>` when the Lolin32 is on the network.
+- **`mode` in `/api/status` / `HB mode=` is the board's ROLE**
+  (`idle`/`target`/`scoreboard`, set via `POST /api/mode`) — **not** the match
+  phase. Boards correctly read `mode=idle` all the way through a running match.
+  There is no per-board readback of "am I in a match"; use hp, or the host's
+  own snapshot. This wasted a test cycle by looking exactly like a bug.
 - **OTA flashing reliably:** use `espota.py` with an explicit host IP, e.g.
   `~/.platformio/penv/Scripts/python.exe ~/.platformio/packages/framework-arduinoespressif32/tools/espota.py -i <device-ip> -I <pc-lan-ip> -p 3232 -f .pio/build/<env>/firmware.bin`.
   The `-I <pc-lan-ip>` (this session: **192.168.1.59**) is ESSENTIAL — without it
@@ -531,16 +587,46 @@ see the RF section above before reopening it.
 phone** — everything else about the Android app is proven except the one thing
 that matters most (receiving broadcasts under the multicast lock).
 
-**Immediately actionable:** (a) **power + OTA boards 1+2** (fleet table above)
-so the whole fleet enforces `id=`; (b) **eyeball the chase visuals** on boards
-3+4 — spin colour, dim scoreboard, countdown blink, gameover hold (host-side
-logic is bench-verified; the LEDs aren't); (c) **exercise the dormant-penalty
-IR path** with a real gun or an IR-TX-equipped board firing at a dormant one;
-(d) audition the quack (`assets/sfx/quack-attack-3s.wav` → card as
-`/sfx/test.wav`, `sdplay`); (e) if the phone controller is wanted next, start
-from `docs/android-controller-options.md` milestone 1 (MAUI Devices screen +
-MulticastLock UDP listener). Remaining Spec B leftovers: OLED-shows-health +
-configurable sound paths (8b); Spec C leftover: retaliation mode (#5).
+**BLOCKING FOR REAL PLAY — no team assignment exists.** Teams are read from
+each board's `config.ownTeam`, which is settable **only** by
+`PATCH /api/config` per board; no host, web or Android surface sets it, and
+`MatchEngine` just snapshots `hb.Team` at start. All four boards currently sit
+on **team 2**, so a deathmatch between them is presently unplayable as teams —
+every hit is friendly fire and no team can win. This is the single biggest gap
+between "the fleet works" and "we can play a game". Fix = a `team <id> <n>`
+verb + a Devices-screen control, both hitting the existing REST config route.
+
+**Immediately actionable:** (a) ✅ **DONE 2026-07-29 — boards 1+2 powered, OTA'd
+and fleet-tested**; the whole fleet is 2.1.0 and enforces `id=`. (b) **eyeball
+the chase visuals** on the fleet — spin colour, dim scoreboard, countdown
+blink, gameover hold (host-side logic is bench-verified; the LEDs aren't). This
+now also covers **activate/deactivate**, which the 2026-07-29 test could not
+confirm remotely (it only changes `vis`). (c) **exercise the dormant-penalty
+IR path** with a real gun or an IR-TX-equipped board firing at a dormant one —
+still the largest untested firmware path, and note the 2026-07-29 test showed
+**no IR hit path has ever been exercised board-to-board** (a `fire` registered
+on nothing; alignment untested). (d) audition the quack
+(`assets/sfx/quack-attack-3s.wav` → card as `/sfx/test.wav`, `sdplay`);
+(e) run the APK on a real phone (see Managers above). Remaining Spec B
+leftovers: OLED-shows-health + configurable sound paths (8b); Spec C leftover:
+retaliation mode (#5).
+
+**Found by the 2026-07-29 review (none blocking, all real):**
+- **`/api/update` is unauthenticated** — anyone on the LAN can flash any board,
+  and there is no guard against flashing **mid-match** (the board reboots and
+  drops out). Fine for a home LAN; note it before this ever leaves one.
+- **`/api/update` reports the OLD version on success** — the response is
+  `{"ok":true,"version":LT_FW_VERSION}` compiled into the *outgoing* image, so
+  it names the version being replaced, not installed. Cosmetic today because
+  the host re-reads the version from the post-reboot heartbeat.
+- **`ota all` has no board-type guard** (see Gotchas) — the one with real
+  bricking potential if ESP-IDF's chip-id check turns out not to save us.
+- **No late join:** `MatchEngine` fixes the lobby at start and ignores
+  heartbeats from unenrolled devices, so a board that boots after the countdown
+  can never join. Deliberate, but undocumented outside the code.
+- **No match-phase readback on a board** (see Gotchas) — worth a `phase` field
+  in StatusDoc/HB if boards ever need to self-check, and it would have made the
+  integration test direct rather than inferential.
 
 0. **When PCBWay boards arrive (order: 10× rev1, link at top):** visually check
    against `board-front.svg` / `board-render-rev1.png`; buy/gather parts per
