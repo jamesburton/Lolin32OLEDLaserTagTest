@@ -6,24 +6,46 @@
 namespace Storage {
 namespace {
 bool mounted = false;
+uint32_t mountHz = 0;
 }
 
 bool sdBegin(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin) {
   mounted = false;
+  mountHz = 0;
   if (csPin < 0 || mosiPin < 0 || misoPin < 0 || sckPin < 0) {
     Serial.println("[sd] no card configured (pin(s) absent)");
     return false;
   }
+
+  // End any previous bus setup before re-initialising. Without this a retry
+  // after a failed mount re-runs SPI.begin() on an already-configured bus,
+  // which does not reliably re-attach the pins — so a card inserted after
+  // boot could never mount until a reboot.
+  SPI.end();
   SPI.begin(sckPin, misoPin, mosiPin, csPin);
-  if (!SD.begin(csPin)) {
-    Serial.println("[sd] mount FAILED");
-    return false;
+
+  // Try descending bus speeds. The library's 4 MHz default is fine on a PCB
+  // with short traces, but hand-wired prototype leads are long, unshielded and
+  // unterminated, and commonly need 1 MHz or slower to enumerate. Starting
+  // fast keeps a good board fast; falling back keeps a marginal one working.
+  static const uint32_t kSpeeds[] = {4000000, 1000000, 400000};
+  for (uint32_t hz : kSpeeds) {
+    if (SD.begin(csPin, SPI, hz)) {
+      mounted = true;
+      mountHz = hz;
+      Serial.printf("[sd] mounted at %lu Hz, type=%d size=%lluMB\n",
+                    (unsigned long)hz, (int)SD.cardType(),
+                    (unsigned long long)(SD.cardSize() / (1024 * 1024)));
+      return true;
+    }
+    SD.end();
   }
-  mounted = true;
-  Serial.printf("[sd] mounted, type=%d size=%lluMB\n", (int)SD.cardType(),
-                (unsigned long long)(SD.cardSize() / (1024 * 1024)));
-  return true;
+
+  Serial.println("[sd] mount FAILED at every speed (4M/1M/400k)");
+  return false;
 }
+
+uint32_t sdMountHz() { return mountHz; }
 
 size_t sdList(const char *path, void (*onEntry)(const char *name)) {
   if (!mounted) {

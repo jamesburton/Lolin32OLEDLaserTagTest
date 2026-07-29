@@ -112,6 +112,19 @@ bool connect(const String &ssid, const String &pass) {
     return false;
   }
   Serial.printf("TagNet connecting to \"%s\"...\n", ssid.c_str());
+
+  // Disable WiFi modem sleep. With the default power save the station only
+  // wakes for its AP's DTIM beacon, and the AP must buffer unicast frames in
+  // the meantime. On a weak link that buffering fails silently and the board
+  // ends up in a state where its own OUTBOUND broadcasts (heartbeats) still
+  // arrive, while every INBOUND unicast — ping, REST, OTA — is dropped: the
+  // board looks alive on the roster yet answers nothing, and ARP for it sits
+  // in "probe". Observed on eb278c at RSSI ~-80.
+  //
+  // Costs roughly 30-40 mA extra. That is the right trade for a control plane
+  // that must accept commands mid-match; revisit if boards ever run on
+  // battery for long idle periods.
+  WiFi.setSleep(false);
   WiFi.begin(ssid.c_str(), pass.c_str());
   const uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < ConnectTimeoutMs) {

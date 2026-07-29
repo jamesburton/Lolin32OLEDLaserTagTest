@@ -615,14 +615,15 @@ String matrixStatus() {
   snprintf(buf, sizeof(buf),
            "vis=%s mode=%s hp=%d brightness=%d hits=%lu debug=%d\n"
            "audio=%s sfxBank=%u sfxPlays=%lu sfxLast=%s\n"
-           "sdWired=%d sdMounted=%d sdPins=cs%d,mosi%d,miso%d,sck%d "
+           "sdWired=%d sdMounted=%d sdHz=%lu sdPins=cs%d,mosi%d,miso%d,sck%d "
            "startupSfx=%s\n",
            m, activeMode, hp, config.brightness, (unsigned long)hitCount,
            debugFrames ? 1 : 0,
            Sound::present() ? "yes" : "NO-AMP-CONFIGURED",
            (unsigned)Sound::sfxCount(), (unsigned long)Sound::sfxPlays(),
            Sound::sfxLastName(), activeProfile.hasSdCard() ? 1 : 0,
-           Storage::sdMounted() ? 1 : 0, (int)activeProfile.sdCsPin,
+           Storage::sdMounted() ? 1 : 0,
+           (unsigned long)Storage::sdMountHz(), (int)activeProfile.sdCsPin,
            (int)activeProfile.sdMosiPin, (int)activeProfile.sdMisoPin,
            (int)activeProfile.sdSckPin,
            config.startupSfx[0] ? config.startupSfx : "(none)");
@@ -1099,15 +1100,12 @@ void setup() {
   HitDisplay::begin(profile, teamColourHex);
   Sound::begin(profile);
 
-  // Mount the card at boot so /api/sd can answer without a first-request
-  // delay. A failure here is not fatal — the board plays its embedded bank
-  // regardless, and sdReady() retries on demand so a card inserted later
-  // works without a reboot.
-  if (profile.hasSdCard()) {
-    Storage::sdBegin(profile.sdCsPin, profile.sdMosiPin, profile.sdMisoPin,
-                     profile.sdSckPin);
-  }
-
+  // NOTE: the microSD is deliberately NOT mounted here. Mounting before
+  // TagNet::begin() puts SD probing ahead of WiFi, so a card or bus that hangs
+  // the SPI probe takes the board off the network entirely — no heartbeat, no
+  // REST, and no OTA route back, which requires physical USB recovery. That
+  // happened once; never again. The mount now runs after networking is up,
+  // and sdReady() mounts lazily on demand regardless.
   HitDisplay::solid({0, 0, 8}); // dim blue: starting / WiFi config
 
   // Resistor-less activity LED: minimum drive strength protects the pin
@@ -1136,6 +1134,14 @@ void setup() {
   randomSeed(esp_random());
 
   vis = Vis::Rainbow;
+
+  // Mount the card only now — AFTER TagNet::begin() has WiFi, HTTP and OTA
+  // running. If the SPI probe hangs or the card is faulty, the board is
+  // already reachable and can be re-flashed over the air.
+  if (activeProfile.hasSdCard()) {
+    Storage::sdBegin(activeProfile.sdCsPin, activeProfile.sdMosiPin,
+                     activeProfile.sdMisoPin, activeProfile.sdSckPin);
+  }
 
   // Startup cue, last so the board is fully up before it blocks on playback.
   // Silent unless config.startupSfx names a clip on the card — the default is

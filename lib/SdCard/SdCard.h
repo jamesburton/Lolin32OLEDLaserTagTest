@@ -22,6 +22,11 @@ uint8_t *sdReadFile(const char *path, size_t &len);
 /// True when a card is currently mounted.
 bool sdMounted();
 
+/// The SPI clock the card actually mounted at, or 0 when not mounted. Exposed
+/// as a diagnostic: a card that only enumerates at the slowest speed is a
+/// signal-integrity warning about the wiring, not a healthy result.
+uint32_t sdMountHz();
+
 /// Total and used bytes on the mounted card. Both are set to 0 when no card
 /// is mounted. Returns false in that case.
 bool sdUsage(uint64_t &totalBytes, uint64_t &usedBytes);
