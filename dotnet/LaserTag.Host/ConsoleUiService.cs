@@ -22,7 +22,7 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
 
     private void Repl(CancellationToken stoppingToken)
     {
-        AnsiConsole.MarkupLine("[bold]LaserTag host[/] — commands: devices, start dm <dur> [[--kill N]] [[--hit N]] [[--waves <dur>]], start elim [[--timer <dur>]], start chase <dur|--first N> [[--min d]] [[--max d]] [[--gap d]] [[--penalty N]] [[--dark]], score, stop, reset [[id]], activate [[id]], deactivate [[id]], team <id|all> <0-4|none>, teams split <n>, sd <ls|put|get|rm|play|startup> …, fw [[bin]], ota <id|all> [[--force]] [[bin]], quit");
+        AnsiConsole.MarkupLine("[bold]LaserTag host[/] — commands: devices, start dm <dur> [[--kill N]] [[--hit N]] [[--waves <dur>]], start elim [[--timer <dur>]], start chase <dur|--first N> [[--min d]] [[--max d]] [[--gap d]] [[--penalty N]] [[--dark]], score, stop, reset [[id]], activate [[id]], deactivate [[id]], team <id|all> <0-4|none>, teams split <n>, fs <ls|put|get|rm|play|startup> …, fw [[bin]], ota <id|all> [[--force]] [[bin]], quit");
         while (!stoppingToken.IsCancellationRequested)
         {
             string? line = Console.ReadLine();
@@ -83,8 +83,8 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
             case "team" or "teams":
                 RunTeam(args);
                 break;
-            case "sd":
-                RunSd(args);
+            case "fs" or "sd":
+                RunFs(args);
                 break;
             case "fw":
                 PrintFirmware(args.ElementAtOrDefault(1));
@@ -340,20 +340,22 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
         }
     }
 
-    private readonly SdCardClient sd = new();
+    private readonly DeviceFilesClient files = new();
 
-    // sd ls <id> [dir] | sd put <id> <local> <remote> | sd get <id> <remote> <local>
-    // sd rm <id> <remote> | sd play <id> <remote> | sd startup <id> <remote|none>
-    private void RunSd(string[] args)
+    // fs ls <id> [dir] | fs put <id> <local> <remote> | fs get <id> <remote> <local>
+    // fs rm <id> <remote> | fs play <id> <remote> | fs startup <id> <remote|none>
+    // `sd` is accepted as an alias: storage moved from the microSD to on-board
+    // flash, but the muscle memory (and the docs) said sd first.
+    private void RunFs(string[] args)
     {
         string? verb = args.ElementAtOrDefault(1)?.ToLowerInvariant();
         string? id = args.ElementAtOrDefault(2);
         if (verb is null || id is null)
         {
             AnsiConsole.MarkupLine(
-                "[yellow]usage: sd ls <id> [[dir]] | sd put <id> <local> <remote> | " +
-                "sd get <id> <remote> <local> | sd rm <id> <remote> | " +
-                "sd play <id> <remote> | sd startup <id> <remote|none>[/]");
+                "[yellow]usage: fs ls <id> [[dir]] | fs put <id> <local> <remote> | " +
+                "fs get <id> <remote> <local> | fs rm <id> <remote> | " +
+                "fs play <id> <remote> | fs startup <id> <remote|none>[/]");
             return;
         }
 
@@ -368,43 +370,43 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
         switch (verb)
         {
             case "ls":
-                SdList(ip, args.ElementAtOrDefault(3) ?? "/");
+                FsList(ip, args.ElementAtOrDefault(3) ?? "/");
                 break;
             case "put":
-                SdPut(ip, args.ElementAtOrDefault(3), args.ElementAtOrDefault(4));
+                FsPut(ip, args.ElementAtOrDefault(3), args.ElementAtOrDefault(4));
                 break;
             case "get":
-                SdGet(ip, args.ElementAtOrDefault(3), args.ElementAtOrDefault(4));
+                FsGet(ip, args.ElementAtOrDefault(3), args.ElementAtOrDefault(4));
                 break;
             case "rm":
-                SdRemove(ip, args.ElementAtOrDefault(3));
+                FsRemove(ip, args.ElementAtOrDefault(3));
                 break;
             case "play":
-                SdPlay(ip, args.ElementAtOrDefault(3));
+                FsPlay(ip, args.ElementAtOrDefault(3));
                 break;
             case "startup":
-                SdStartup(ip, args.ElementAtOrDefault(3));
+                FsStartup(ip, args.ElementAtOrDefault(3));
                 break;
             default:
-                AnsiConsole.MarkupLine("[yellow]unknown sd verb[/]");
+                AnsiConsole.MarkupLine("[yellow]unknown fs verb[/]");
                 break;
         }
     }
 
-    private void SdList(string ip, string dir)
+    private void FsList(string ip, string dir)
     {
-        SdCardClient.Result<SdListing> r = sd.ListAsync(ip, dir).GetAwaiter().GetResult();
+        DeviceFilesClient.Result<StorageListing> r = files.ListAsync(ip, dir).GetAwaiter().GetResult();
         if (!r.Ok || r.Value is null)
         {
-            AnsiConsole.MarkupLineInterpolated($"[red]sd ls failed:[/] {r.Error}");
+            AnsiConsole.MarkupLineInterpolated($"[red]fs ls failed:[/] {r.Error}");
             return;
         }
 
-        SdListing listing = r.Value;
+        StorageListing listing = r.Value;
         AnsiConsole.MarkupLineInterpolated(
             $"card: [bold]{listing.UsedKb / 1024}[/] MB used of [bold]{listing.TotalKb / 1024}[/] MB — {listing.Path}");
         var table = new Table().AddColumns("name", "size", "type");
-        foreach (SdEntry e in listing.Files)
+        foreach (FileEntry e in listing.Files)
         {
             table.AddRow(e.Name, e.IsDirectory ? "-" : e.Size.ToString(), e.IsDirectory ? "dir" : "file");
         }
@@ -412,15 +414,15 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
         AnsiConsole.Write(table);
     }
 
-    private void SdPut(string ip, string? local, string? remote)
+    private void FsPut(string ip, string? local, string? remote)
     {
         if (local is null || remote is null)
         {
-            AnsiConsole.MarkupLine("[yellow]usage: sd put <id> <local> <remote>[/]");
+            AnsiConsole.MarkupLine("[yellow]usage: fs put <id> <local> <remote>[/]");
             return;
         }
 
-        SdCardClient.Result<bool> r = sd.UploadAsync(ip, local, remote).GetAwaiter().GetResult();
+        DeviceFilesClient.Result<bool> r = files.UploadAsync(ip, local, remote).GetAwaiter().GetResult();
         // if/else, not a ternary: a ternary collapses both arms to `string`,
         // which binds MarkupLineInterpolated's string overload and re-enables
         // markup parsing of the interpolated values (bit us before, e071754).
@@ -434,15 +436,15 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
         }
     }
 
-    private void SdGet(string ip, string? remote, string? local)
+    private void FsGet(string ip, string? remote, string? local)
     {
         if (remote is null || local is null)
         {
-            AnsiConsole.MarkupLine("[yellow]usage: sd get <id> <remote> <local>[/]");
+            AnsiConsole.MarkupLine("[yellow]usage: fs get <id> <remote> <local>[/]");
             return;
         }
 
-        SdCardClient.Result<byte[]> r = sd.DownloadAsync(ip, remote).GetAwaiter().GetResult();
+        DeviceFilesClient.Result<byte[]> r = files.DownloadAsync(ip, remote).GetAwaiter().GetResult();
         if (!r.Ok || r.Value is null)
         {
             AnsiConsole.MarkupLineInterpolated($"  [red]download failed:[/] {r.Error}");
@@ -453,15 +455,15 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
         AnsiConsole.MarkupLineInterpolated($"  [green]downloaded[/] {remote} -> {local} ({r.Value.Length} bytes)");
     }
 
-    private void SdRemove(string ip, string? remote)
+    private void FsRemove(string ip, string? remote)
     {
         if (remote is null)
         {
-            AnsiConsole.MarkupLine("[yellow]usage: sd rm <id> <remote>[/]");
+            AnsiConsole.MarkupLine("[yellow]usage: fs rm <id> <remote>[/]");
             return;
         }
 
-        SdCardClient.Result<bool> r = sd.DeleteAsync(ip, remote).GetAwaiter().GetResult();
+        DeviceFilesClient.Result<bool> r = files.DeleteAsync(ip, remote).GetAwaiter().GetResult();
         if (r.Ok)
         {
             AnsiConsole.MarkupLineInterpolated($"  [green]deleted[/] {remote}");
@@ -472,11 +474,11 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
         }
     }
 
-    private void SdPlay(string ip, string? remote)
+    private void FsPlay(string ip, string? remote)
     {
         if (remote is null)
         {
-            AnsiConsole.MarkupLine("[yellow]usage: sd play <id> <remote>[/]");
+            AnsiConsole.MarkupLine("[yellow]usage: fs play <id> <remote>[/]");
             return;
         }
 
@@ -501,11 +503,11 @@ public sealed class ConsoleUiService(GameService game, IHostApplicationLifetime 
         }
     }
 
-    private void SdStartup(string ip, string? remote)
+    private void FsStartup(string ip, string? remote)
     {
         if (remote is null)
         {
-            AnsiConsole.MarkupLine("[yellow]usage: sd startup <id> <remote|none>[/]");
+            AnsiConsole.MarkupLine("[yellow]usage: fs startup <id> <remote|none>[/]");
             return;
         }
 

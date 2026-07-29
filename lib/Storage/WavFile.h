@@ -23,4 +23,23 @@ struct WavView {
 /// string literal, safe to log directly, do not free).
 bool parseWav(const uint8_t *buf, size_t len, WavView &out, const char *&err);
 
+/// <summary>
+/// Parses only the RIFF header, from a small prefix of the file.
+/// </summary>
+/// <param name="buf">The first bytes of the file (512 is ample).</param>
+/// <param name="len">How many bytes <paramref name="buf"/> holds.</param>
+/// <param name="out">Receives format and sampleCount; `pcm` is left null.</param>
+/// <param name="dataOffset">Receives the byte offset of the PCM data.</param>
+/// <param name="err">Set to a static reason string on failure.</param>
+/// <returns>True when the header is valid and the format is supported.</returns>
+/// <remarks>
+/// Exists so a clip can be STREAMED rather than loaded whole. parseWav needs
+/// the entire file in RAM, which caps clips at whatever heap is free (~270 KB
+/// here) — a 10 s clip is 313 KB and simply cannot be loaded. This reads the
+/// header from a small prefix so playback can then pull PCM in chunks, which
+/// removes the length limit entirely.
+/// </remarks>
+bool parseWavHeader(const uint8_t *buf, size_t len, WavView &out,
+                    size_t &dataOffset, const char *&err);
+
 } // namespace Storage

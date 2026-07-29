@@ -5,8 +5,8 @@ using System.Text.Json.Serialization;
 
 namespace LaserTag.Client;
 
-/// <summary>One entry in a device's microSD directory listing.</summary>
-public sealed class SdEntry
+/// <summary>One entry in a device's storage directory listing.</summary>
+public sealed class FileEntry
 {
     /// <summary>Gets the entry name (leaf only, not a full path).</summary>
     [JsonPropertyName("name")]
@@ -21,8 +21,8 @@ public sealed class SdEntry
     public bool IsDirectory { get; init; }
 }
 
-/// <summary>A device's microSD status and one directory's contents.</summary>
-public sealed class SdListing
+/// <summary>A device's storage status and one directory's contents.</summary>
+public sealed class StorageListing
 {
     /// <summary>Gets a value indicating whether a card is mounted.</summary>
     [JsonPropertyName("present")]
@@ -42,11 +42,11 @@ public sealed class SdListing
 
     /// <summary>Gets the entries directly under <see cref="Path"/>.</summary>
     [JsonPropertyName("files")]
-    public IReadOnlyList<SdEntry> Files { get; init; } = [];
+    public IReadOnlyList<FileEntry> Files { get; init; } = [];
 }
 
 /// <summary>
-/// Manages a single board's microSD card over its REST surface: list, upload,
+/// Manages a single board's clip storage over its REST surface: list, upload,
 /// download and delete.
 /// </summary>
 /// <remarks>
@@ -57,20 +57,21 @@ public sealed class SdListing
 /// whole folder can report per-file results.
 /// </para>
 /// <para>
-/// Requires device firmware 2.3.0 or newer; earlier images have no
-/// <c>/api/sd</c> and answer 404.
+/// Storage is the board's on-board flash partition, not the microSD — it needs
+/// no socket, module or wiring. Requires device firmware 2.4.0 or newer;
+/// earlier images have no <c>/api/files</c> and answer 404.
 /// </para>
 /// </remarks>
-public sealed class SdCardClient
+public sealed class DeviceFilesClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly TimeSpan _timeout;
 
-    /// <summary>Initializes a new instance of the <see cref="SdCardClient"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="DeviceFilesClient"/> class.</summary>
     /// <param name="timeout">Per-request timeout. Defaults to 30 seconds, which
     /// accommodates a multi-hundred-kB clip upload over a weak link.</param>
-    public SdCardClient(TimeSpan? timeout = null) =>
+    public DeviceFilesClient(TimeSpan? timeout = null) =>
         _timeout = timeout ?? TimeSpan.FromSeconds(30);
 
     /// <summary>The outcome of an SD operation.</summary>
@@ -80,17 +81,17 @@ public sealed class SdCardClient
     /// <param name="Error">The failure reason otherwise.</param>
     public readonly record struct Result<T>(bool Ok, T? Value, string? Error);
 
-    /// <summary>Lists a directory on a board's card.</summary>
+    /// <summary>Lists a directory in a board's storage.</summary>
     /// <param name="ip">The device IP.</param>
     /// <param name="path">The directory to list. Defaults to the card root.</param>
     /// <param name="cancellationToken">A token to cancel the request.</param>
     /// <returns>The listing, or a failure.</returns>
-    public async Task<Result<SdListing>> ListAsync(
+    public async Task<Result<StorageListing>> ListAsync(
         string ip, string path = "/", CancellationToken cancellationToken = default)
     {
-        return await SendAsync<SdListing>(
+        return await SendAsync<StorageListing>(
             ip,
-            http => http.GetAsync($"/api/sd?path={Uri.EscapeDataString(path)}", cancellationToken),
+            http => http.GetAsync($"/api/files?path={Uri.EscapeDataString(path)}", cancellationToken),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -118,7 +119,7 @@ public sealed class SdCardClient
             return new Result<bool>(false, false, ex.Message);
         }
 
-        Result<SdUploadAck> result = await SendAsync<SdUploadAck>(
+        Result<UploadAck> result = await SendAsync<UploadAck>(
             ip,
             http =>
             {
@@ -130,7 +131,7 @@ public sealed class SdCardClient
                 file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
                 content.Add(file, "file", Path.GetFileName(remotePath));
                 return http.PostAsync(
-                    $"/api/sd/file?path={Uri.EscapeDataString(remotePath)}", content, cancellationToken);
+                    $"/api/files/file?path={Uri.EscapeDataString(remotePath)}", content, cancellationToken);
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -159,7 +160,7 @@ public sealed class SdCardClient
         try
         {
             using HttpResponseMessage response = await http
-                .GetAsync($"/api/sd/file?path={Uri.EscapeDataString(remotePath)}", cancellationToken)
+                .GetAsync($"/api/files/file?path={Uri.EscapeDataString(remotePath)}", cancellationToken)
                 .ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
@@ -183,9 +184,9 @@ public sealed class SdCardClient
     public async Task<Result<bool>> DeleteAsync(
         string ip, string remotePath, CancellationToken cancellationToken = default)
     {
-        Result<SdOkAck> result = await SendAsync<SdOkAck>(
+        Result<OkAck> result = await SendAsync<OkAck>(
             ip,
-            http => http.DeleteAsync($"/api/sd/file?path={Uri.EscapeDataString(remotePath)}", cancellationToken),
+            http => http.DeleteAsync($"/api/files/file?path={Uri.EscapeDataString(remotePath)}", cancellationToken),
             cancellationToken).ConfigureAwait(false);
         return new Result<bool>(result.Ok, result.Ok, result.Error);
     }
@@ -229,7 +230,7 @@ public sealed class SdCardClient
         {
             // A bare 404 with no device error body means the route itself is
             // absent, i.e. firmware older than 2.3.0.
-            return "no /api/sd on this device — firmware 2.3.0+ required";
+            return "no /api/files on this device — firmware 2.4.0+ required";
         }
 
         try
@@ -248,13 +249,13 @@ public sealed class SdCardClient
         return $"HTTP {(int)response.StatusCode}: {body}";
     }
 
-    private sealed class SdUploadAck
+    private sealed class UploadAck
     {
         [JsonPropertyName("size")]
         public int Size { get; init; }
     }
 
-    private sealed class SdOkAck
+    private sealed class OkAck
     {
         [JsonPropertyName("ok")]
         public bool Ok { get; init; }

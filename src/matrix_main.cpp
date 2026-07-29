@@ -31,6 +31,7 @@
 #include <BoardProfile.h>
 #include <BoardNvs.h>
 #include <HitDisplay.h>
+#include <FlashFs.h>
 #include <SdCard.h>
 #include <SdPath.h>
 #include <Sound.h>
@@ -47,7 +48,7 @@ namespace cp = ControlProto;
 // Firmware version reported on the wire (contract §1.3 fw=). BUMP THIS on
 // every behavioural firmware change — the host's fleet updater compares it
 // against the built image to decide who needs an OTA (fleet-ota spec).
-#define LT_FW_VERSION "2.3.0"
+#define LT_FW_VERSION "2.4.0"
 static const char *kFirmwareVersion = LT_FW_VERSION;
 
 // Embedded marker so the host can read a firmware.bin's version by scanning
@@ -777,25 +778,32 @@ String matrixStatus() {
                   : vis == Vis::Flash ? "flash"
                   : vis == Vis::Dead  ? "dead"
                                       : "dark";
-  char buf[320];
-  // The audio/SD lines are diagnostics: without a serial cable there is
-  // otherwise no way to tell "no amp configured" from "amp fine, clip
-  // rejected", or "no card inserted" from "card wired to different pins".
+  size_t fsTotal = 0;
+  size_t fsUsed = 0;
+  Storage::fsUsage(fsTotal, fsUsed);
+
+  char buf[416];
+  // Diagnostics: without a serial cable there is otherwise no way to tell "no
+  // amp configured" from "amp fine, clip rejected", or to see how much clip
+  // space is left. The sd* line is retained purely for hardware diagnosis —
+  // clips live in flash now.
   snprintf(buf, sizeof(buf),
            "vis=%s mode=%s hp=%d brightness=%d hits=%lu debug=%d\n"
            "audio=%s sfxBank=%u sfxPlays=%lu sfxLast=%s\n"
-           "sdWired=%d sdMounted=%d sdHz=%lu sdPins=cs%d,mosi%d,miso%d,sck%d "
-           "startupSfx=%s\n",
+           "fsMounted=%d fsUsedKb=%u fsTotalKb=%u startupSfx=%s\n"
+           "sdWired=%d sdMounted=%d sdHz=%lu sdPins=cs%d,mosi%d,miso%d,sck%d\n",
            m, activeMode, hp, config.brightness, (unsigned long)hitCount,
            debugFrames ? 1 : 0,
            Sound::present() ? "yes" : "NO-AMP-CONFIGURED",
            (unsigned)Sound::sfxCount(), (unsigned long)Sound::sfxPlays(),
-           Sound::sfxLastName(), activeProfile.hasSdCard() ? 1 : 0,
-           Storage::sdMounted() ? 1 : 0,
+           Sound::sfxLastName(),
+           Storage::fsMounted() ? 1 : 0, (unsigned)(fsUsed / 1024),
+           (unsigned)(fsTotal / 1024),
+           config.startupSfx[0] ? config.startupSfx : "(none)",
+           activeProfile.hasSdCard() ? 1 : 0, Storage::sdMounted() ? 1 : 0,
            (unsigned long)Storage::sdMountHz(), (int)activeProfile.sdCsPin,
            (int)activeProfile.sdMosiPin, (int)activeProfile.sdMisoPin,
-           (int)activeProfile.sdSckPin,
-           config.startupSfx[0] ? config.startupSfx : "(none)");
+           (int)activeProfile.sdSckPin);
   return String(buf);
 }
 
@@ -1024,50 +1032,64 @@ bool playSdClip(const char *path) {
   if (path == nullptr || strlen(path) == 0) {
     return false; // "" means "no clip configured" — not an error
   }
-  if (!Storage::isSafeSdPath(path) || !sdReady()) {
+  if (!Storage::isSafeSdPath(path) || !Storage::fsBegin()) {
     return false;
   }
-  size_t len = 0;
-  uint8_t *buf = Storage::sdReadFile(path, len);
-  if (buf == nullptr) {
+
+  size_t fileSize = 0;
+  if (!Storage::fsOpenRead(path, fileSize)) {
+    Serial.printf("[fs] play '%s': not found\n", path);
     return false;
   }
+
+  // Parse the header from a small prefix, then STREAM the PCM. Loading whole
+  // would cap clips at free heap (~270 KB) — a 10 s clip is 313 KB and would
+  // simply fail, which is exactly what it did before this.
+  uint8_t header[256];
+  const size_t got = Storage::fsRead(header, sizeof(header));
   Storage::WavView view;
+  size_t dataOffset = 0;
   const char *err = nullptr;
-  const bool ok = Storage::parseWav(buf, len, view, err);
-  if (ok) {
-    Sound::playRaw(view.pcm, view.sampleCount);
-  } else {
-    Serial.printf("[sd] play '%s': WAV rejected (%s)\n", path, err);
+  if (!Storage::parseWavHeader(header, got, view, dataOffset, err)) {
+    Serial.printf("[fs] play '%s': WAV rejected (%s)\n", path, err);
+    Storage::fsCloseRead();
+    return false;
   }
-  // playRaw blocks until the clip has been written to I2S and the DMA has
-  // drained, so the buffer is fully consumed by the time it returns and is
-  // safe to free here. That also means a long clip stalls the loop — keep
-  // clips within the ~5 s idle watchdog (the 3 s quack was trimmed for
-  // exactly this reason).
-  free(buf);
-  return ok;
+
+  if (!Storage::fsSeek(dataOffset) || !Sound::streamBegin()) {
+    Storage::fsCloseRead();
+    return false;
+  }
+
+  static int16_t pcm[512]; // static: 1 KB has no business on the loop stack
+  size_t remaining = view.sampleCount * 2;
+  while (remaining > 0) {
+    const size_t want = remaining < sizeof(pcm) ? remaining : sizeof(pcm);
+    const size_t n = Storage::fsRead((uint8_t *)pcm, want);
+    if (n == 0) {
+      break; // truncated file; play what we have rather than hang
+    }
+    Sound::streamChunk(pcm, n / 2);
+    remaining -= n;
+  }
+
+  Sound::streamEnd();
+  Storage::fsCloseRead();
+  Serial.printf("[fs] played '%s' (%u samples)\n", path,
+                (unsigned)view.sampleCount);
+  return true;
 }
 
-// GET /api/sd[?path=/dir] -> card status plus a directory listing.
-void handleSdList() {
-  const Board::BoardProfile &prof = activeProfile;
-  if (!prof.hasSdCard()) {
-    sendJson(404, "{\"error\":\"no SD card wired on this board\"}");
-    return;
-  }
-  if (!sdReady()) {
-    // Report the pins we tried: the commonest cause of this is a card wired to
-    // different pins than the board profile assumes, and without a serial
-    // cable there is no other way to see what was attempted.
-    char err[200];
-    snprintf(err, sizeof(err),
-             "{\"present\":false,\"error\":\"card not mounted — not inserted, "
-             "not FAT16/FAT32, or wired to other pins\",\"triedPins\":{\"cs\":%d,"
-             "\"mosi\":%d,\"miso\":%d,\"sck\":%d}}",
-             (int)prof.sdCsPin, (int)prof.sdMosiPin, (int)prof.sdMisoPin,
-             (int)prof.sdSckPin);
-    sendJson(503, err);
+// GET /api/files[?path=/dir] -> storage usage plus a directory listing.
+//
+// Backed by on-board flash (LittleFS), not the microSD. Clips live in the
+// partition table's otherwise-unused 1.375 MB data partition, which needs no
+// socket, module or wiring — the three things that actually failed on the
+// card. The microSD code remains for diagnostics (`sdprobe`, `sdpins`).
+void handleFsList() {
+  if (!Storage::fsBegin()) {
+    sendJson(503, "{\"present\":false,\"error\":\"flash filesystem "
+                  "unavailable (no data partition?)\"}");
     return;
   }
 
@@ -1076,12 +1098,10 @@ void handleSdList() {
     return;
   }
 
-  uint64_t total = 0;
-  uint64_t used = 0;
-  Storage::sdUsage(total, used);
+  size_t total = 0;
+  size_t used = 0;
+  Storage::fsUsage(total, used);
 
-  // Reported in kB: a 32-bit byte count would overflow on cards >4 GB, and
-  // Arduino's String has no 64-bit append.
   String out = "{\"present\":true,\"totalKb\":";
   out += (uint32_t)(total / 1024);
   out += ",\"usedKb\":";
@@ -1095,9 +1115,9 @@ void handleSdList() {
     bool first;
   } ctx{&out, true};
 
-  Storage::sdListDetailed(
+  Storage::fsList(
       path.c_str(),
-      [](const Storage::SdEntry &e, void *raw) {
+      [](const Storage::FsEntry &e, void *raw) {
         Ctx *c = (Ctx *)raw;
         if (!c->first) {
           *c->out += ',';
@@ -1117,10 +1137,10 @@ void handleSdList() {
   TagNet::httpServer().send(200, "application/json", out);
 }
 
-// GET /api/sd/file?path=... -> the raw file.
-void handleSdDownload() {
-  if (!sdReady()) {
-    sendJson(503, "{\"error\":\"card not mounted\"}");
+// GET /api/files/file?path=... -> the raw file.
+void handleFsDownload() {
+  if (!Storage::fsBegin()) {
+    sendJson(503, "{\"error\":\"flash filesystem unavailable\"}");
     return;
   }
   String path;
@@ -1128,7 +1148,7 @@ void handleSdDownload() {
     return;
   }
   size_t len = 0;
-  uint8_t *buf = Storage::sdReadFile(path.c_str(), len);
+  uint8_t *buf = Storage::fsReadFile(path.c_str(), len);
   if (buf == nullptr) {
     sendJson(404, "{\"error\":\"not found or unreadable\"}");
     return;
@@ -1139,54 +1159,51 @@ void handleSdDownload() {
   free(buf);
 }
 
-// DELETE /api/sd/file?path=...
-void handleSdDelete() {
-  if (!sdReady()) {
-    sendJson(503, "{\"error\":\"card not mounted\"}");
+// DELETE /api/files/file?path=...
+void handleFsDelete() {
+  if (!Storage::fsBegin()) {
+    sendJson(503, "{\"error\":\"flash filesystem unavailable\"}");
     return;
   }
   String path;
   if (!requireSdPath(TagNet::httpServer(), path, "")) {
     return;
   }
-  if (!Storage::sdDelete(path.c_str())) {
+  if (!Storage::fsDelete(path.c_str())) {
     sendJson(404, "{\"error\":\"not found, or is a directory\"}");
     return;
   }
   sendJson(200, "{\"ok\":true}");
 }
 
-// Streamed upload half of POST /api/sd/file?path=... Mirrors the OTA handler:
-// the body is written straight to the card rather than buffered in RAM, so
-// clip size is bounded by the card, not by free heap.
-void handleSdUploadData() {
+// Streamed upload half of POST /api/files/file?path=... The body is written
+// straight to flash rather than buffered in RAM, so clip size is bounded by
+// the partition, not by free heap.
+void handleFsUploadData() {
   HTTPUpload &up = TagNet::httpServer().upload();
   if (up.status == UPLOAD_FILE_START) {
-    String path;
-    // The query arg is still readable here; validate before opening anything.
     if (!TagNet::httpServer().hasArg("path") ||
         !Storage::isSafeSdPath(TagNet::httpServer().arg("path").c_str())) {
       return; // the completion handler answers 400
     }
-    path = TagNet::httpServer().arg("path");
-    if (sdReady()) {
-      Storage::sdWriteOpen(path.c_str());
+    if (Storage::fsBegin()) {
+      Storage::fsWriteOpen(TagNet::httpServer().arg("path").c_str());
     }
   } else if (up.status == UPLOAD_FILE_WRITE) {
-    if (!Storage::sdWriteChunk(up.buf, up.currentSize)) {
-      Storage::sdWriteAbort();
+    if (!Storage::fsWriteChunk(up.buf, up.currentSize)) {
+      Storage::fsWriteAbort();
     }
   } else if (up.status == UPLOAD_FILE_END) {
-    Storage::sdWriteClose();
+    Storage::fsWriteClose();
   } else if (up.status == UPLOAD_FILE_ABORTED) {
-    Storage::sdWriteAbort();
+    Storage::fsWriteAbort();
   }
 }
 
-// Completion half of POST /api/sd/file?path=...
-void handleSdUploadDone() {
-  if (!sdReady()) {
-    sendJson(503, "{\"error\":\"card not mounted\"}");
+// Completion half of POST /api/files/file?path=...
+void handleFsUploadDone() {
+  if (!Storage::fsBegin()) {
+    sendJson(503, "{\"error\":\"flash filesystem unavailable\"}");
     return;
   }
   String path;
@@ -1194,18 +1211,22 @@ void handleSdUploadDone() {
     return;
   }
   bool isDir = false;
-  if (!Storage::sdExists(path.c_str(), isDir) || isDir) {
-    sendJson(500, "{\"error\":\"upload failed — nothing written\"}");
+  if (!Storage::fsExists(path.c_str(), isDir) || isDir) {
+    sendJson(500, "{\"error\":\"upload failed — nothing written (out of "
+                  "space?)\"}");
     return;
   }
+  // Ask the filesystem for the size rather than reading the file back: a
+  // 313 KB clip cannot be malloc'd here, which made the ack report size 0 for
+  // exactly the large clips most worth confirming.
   size_t len = 0;
-  uint8_t *buf = Storage::sdReadFile(path.c_str(), len);
-  const uint32_t size = (uint32_t)len;
-  free(buf);
+  if (Storage::fsOpenRead(path.c_str(), len)) {
+    Storage::fsCloseRead();
+  }
 
-  char out[96];
+  char out[128];
   snprintf(out, sizeof(out), "{\"ok\":true,\"path\":\"%s\",\"size\":%u}",
-           path.c_str(), (unsigned)size);
+           path.c_str(), (unsigned)len);
   sendJson(200, out);
 }
 
@@ -1231,16 +1252,16 @@ void registerRoutes() {
 
   // microSD management. /api/sd/file carries three methods: POST streams an
   // upload (hence the two-handler form), GET downloads, DELETE removes.
-  s.on("/api/sd", HTTP_ANY, []() {
+  s.on("/api/files", HTTP_ANY, []() {
     if (TagNet::httpServer().method() == HTTP_GET) {
-      handleSdList();
+      handleFsList();
     } else {
       sendJson(405, "{\"error\":\"method not allowed\"}");
     }
   });
-  s.on("/api/sd/file", HTTP_POST, handleSdUploadDone, handleSdUploadData);
-  s.on("/api/sd/file", HTTP_GET, handleSdDownload);
-  s.on("/api/sd/file", HTTP_DELETE, handleSdDelete);
+  s.on("/api/files/file", HTTP_POST, handleFsUploadDone, handleFsUploadData);
+  s.on("/api/files/file", HTTP_GET, handleFsDownload);
+  s.on("/api/files/file", HTTP_DELETE, handleFsDelete);
   s.on("/api/status", HTTP_ANY, []() {
     if (TagNet::httpServer().method() == HTTP_GET) {
       handleStatus();
@@ -1305,13 +1326,9 @@ void setup() {
 
   vis = Vis::Rainbow;
 
-  // Mount the card only now — AFTER TagNet::begin() has WiFi, HTTP and OTA
-  // running. If the SPI probe hangs or the card is faulty, the board is
-  // already reachable and can be re-flashed over the air.
-  if (activeProfile.hasSdCard()) {
-    Storage::sdBegin(activeProfile.sdCsPin, activeProfile.sdMosiPin,
-                     activeProfile.sdMisoPin, activeProfile.sdSckPin);
-  }
+  // Mount clip storage only now — AFTER TagNet::begin() has WiFi, HTTP and OTA
+  // running, so a filesystem problem can never leave the board unreachable.
+  Storage::fsBegin();
 
   // Startup cue, last so the board is fully up before it blocks on playback.
   // Silent unless config.startupSfx names a clip on the card — the default is

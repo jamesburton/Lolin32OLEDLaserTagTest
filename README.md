@@ -327,6 +327,7 @@ dotnet run --project dotnet/LaserTag.Host            # auto-detects the subnet b
 # score | stop | reset [id] | activate [id] | deactivate [id] | quit
 # team <id|all> <0-4|none>  — assign a board's team (0/none = neutral target)
 # teams split <n>           — deal the online roster round-robin into n sides
+# fs ls|put|get|rm|play|startup <id> …  — manage sound clips in on-board flash
 # fw [bin]                — fleet firmware table: running vs available (from the
 #                           LTFW: marker embedded in firmware.bin)
 # ota <id|all> [--force]  — push firmware over HTTP to online boards; `all`
@@ -340,39 +341,55 @@ future phone app — no espota/python needed. Spec:
 `docs/superpowers/specs/2026-07-27-fleet-ota-design.md`. Boards on older
 firmware need one last espota flash to gain the endpoint.
 
-### microSD contents (firmware ≥ 2.3.0)
+### Sound clips in on-board flash (firmware ≥ 2.4.0)
 
-Sound clips live on the board's microSD and are managed remotely — no cable, no
-pulling the card:
+Clips live in the board's **on-board flash**, in the partition table's
+otherwise-unused 1.375 MB data partition (LittleFS). No microSD, no socket, no
+wiring. Manage them remotely:
 
 ```sh
-sd ls <id> [dir]              # card usage + directory listing
-sd put <id> <local> <remote>  # upload, e.g. sd put eb278c assets/sfx/startup-rise.wav /sfx/startup.wav
-sd get <id> <remote> <local>  # download
-sd rm  <id> <remote>          # delete (files only; directories are refused)
-sd play <id> <remote>         # play a clip now
-sd startup <id> <remote|none> # set/clear the power-on cue
+fs ls <id> [dir]              # storage usage + directory listing
+fs put <id> <local> <remote>  # upload, e.g. fs put e45614 assets/sfx/startup-rise.wav /sfx/startup.wav
+fs get <id> <remote> <local>  # download
+fs rm  <id> <remote>          # delete (files only; directories are refused)
+fs play <id> <remote>         # play a clip now
+fs startup <id> <remote|none> # set/clear the power-on cue
 ```
 
-The same operations are a REST surface on each board: `GET /api/sd?path=`,
-`POST|GET|DELETE /api/sd/file?path=`, and `POST /api/command {"cmd":"play",
-"path":"…"}`.
+REST equivalents on each board: `GET /api/files?path=`,
+`POST|GET|DELETE /api/files/file?path=`, and
+`POST /api/command {"cmd":"play","path":"…"}`.
 
 **Clips must be 16 kHz / 16-bit / mono WAV** — the parser rejects anything else
-rather than converting it. Generate one with
-`python tools/gen_sfx.py --wav out.wav --clip startup|death`. Keep clips under
-~5 s: playback blocks the main loop, and a longer clip trips the idle watchdog.
+rather than converting. Generate one with
+`python tools/gen_sfx.py --wav out.wav --clip startup|death`, or convert any
+source with
+`ffmpeg -i in.mp3 -ac 1 -ar 16000 -sample_fmt s16 out.wav`.
 
-> **Startup sound defaults to none.** Set it per board with `sd startup`; it is
-> stored as `startupSfx` in the device config and played once at the end of
-> boot. An unset, missing or malformed clip is silently skipped so a board
-> always comes up.
+**There is no clip length limit.** Playback streams from flash in chunks and
+feeds the task watchdog, so clip size is bounded by the partition (~1.4 MB,
+about four 10-second clips) rather than by free RAM. Both former limits are
+gone: clips used to be capped at ~3 s by the watchdog, and at ~270 KB by having
+to fit in the heap.
 
-> Every caller-supplied path is validated on the device: it must be absolute
-> and contain no `..` segment. That check is the only thing between a LAN
-> request and the card's filesystem, so it is unit-tested natively.
+> **Startup sound defaults to none.** Set it per board with `fs startup`; it is
+> stored as `startupSfx` and played once at the end of boot. An unset, missing
+> or malformed clip is skipped silently so a board always comes up.
 
-### Teams (firmware ≥ 2.2.0)
+> Clips **survive firmware updates** — OTA replaces the app partition only.
+
+> A clip that no config field references is reachable *only* via the API, which
+> is how to keep a "secret" sound with no on-board trigger.
+
+> Every caller-supplied path is validated on the device: absolute, no `..`
+> segment. That check is the only thing between a LAN request and the
+> filesystem, so it is unit-tested natively.
+
+**microSD is optional and currently unproven.** The code remains (`sdprobe`,
+`sdpins`, `sdscan` are useful hardware diagnostics), but no board here has ever
+mounted a card — see the handoff for the electrical findings.
+
+### Teams (firmware ≥ 2.2.0)### Teams (firmware ≥ 2.2.0)
 
 A device's team lives in its **persisted config** (`ownTeam`), not the control
 plane: a match reads each board's team from its heartbeat and snapshots it when

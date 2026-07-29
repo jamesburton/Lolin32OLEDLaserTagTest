@@ -19,6 +19,13 @@ bool present();
 
 void        playIndex(int idx); // play bank entry idx; no-op if out of range
 void        playRaw(const int16_t *data, size_t samples); // I2sDac only; no-op otherwise
+
+// Streaming playback, for clips too large to hold in RAM. Call streamBegin,
+// then streamChunk repeatedly, then streamEnd. A 10 s clip is 313 KB against
+// ~270 KB of free heap, so loading whole is not merely wasteful but impossible.
+bool        streamBegin();
+void        streamChunk(const int16_t *data, size_t samples);
+void        streamEnd();
 uint8_t     sfxCount();      // bank size
 uint8_t     sfxLastIndex();  // index of the most recently played entry
 const char *sfxLastName();   // name of the most recently played entry

@@ -202,6 +202,47 @@ void playRaw(const int16_t *data, size_t samples) {
 #endif
 }
 
+bool streamBegin() {
+#if defined(ESP32)
+  if (kind != Board::AudioKind::I2sDac) return false;
+  i2s_start(kPort);
+  return true;
+#else
+  return false;
+#endif
+}
+
+void streamChunk(const int16_t *data, size_t samples) {
+#if defined(ESP32)
+  if (kind != Board::AudioKind::I2sDac || data == nullptr || samples == 0) return;
+  static int16_t chunk[256];
+  size_t i = 0;
+  while (i < samples) {
+    const size_t n = samples - i < 256 ? samples - i : 256;
+    for (size_t j = 0; j < n; j++) {
+      chunk[j] = (int16_t)((float)data[i + j] * kVolume);
+    }
+    size_t written;
+    i2s_write(kPort, chunk, n * sizeof(int16_t), &written, portMAX_DELAY);
+    i += n;
+    esp_task_wdt_reset();
+  }
+#else
+  (void)data; (void)samples;
+#endif
+}
+
+void streamEnd() {
+#if defined(ESP32)
+  if (kind != Board::AudioKind::I2sDac) return;
+  // i2s_write queues rather than drains; wait out the DMA so the tail is not
+  // clipped, then stop the clock so the amp is silent at idle.
+  delay(20);
+  i2s_zero_dma_buffer(kPort);
+  i2s_stop(kPort);
+#endif
+}
+
 uint8_t sfxCount() {
 #if defined(HAVE_SFX_BANK)
   return (uint8_t)kSfxBankCount; // embedded samples

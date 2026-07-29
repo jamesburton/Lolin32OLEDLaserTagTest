@@ -76,4 +76,65 @@ bool parseWav(const uint8_t *buf, size_t len, WavView &out, const char *&err) {
   return true;
 }
 
+bool parseWavHeader(const uint8_t *buf, size_t len, WavView &out,
+                    size_t &dataOffset, const char *&err) {
+  dataOffset = 0;
+  if (len < 12) { err = "buffer too small for RIFF header"; return false; }
+  if (!tag(buf, "RIFF")) { err = "not RIFF"; return false; }
+  if (!tag(buf + 8, "WAVE")) { err = "not WAVE"; return false; }
+
+  bool haveFmt = false, haveData = false;
+  uint16_t fmtChannels = 0, fmtBits = 0;
+  uint32_t fmtRate = 0, dataBytes = 0;
+
+  size_t pos = 12;
+  // Walk chunk headers only. Unlike parseWav this never requires the chunk
+  // BODY to be present, which is the whole point: the data chunk is megabytes
+  // and lives on disk, not in this prefix.
+  while (pos + 8 <= len) {
+    const uint8_t *chunkId = buf + pos;
+    const uint32_t chunkSize = readU32LE(buf + pos + 4);
+    const size_t chunkBody = pos + 8;
+
+    if (tag(chunkId, "fmt ")) {
+      if (chunkSize < 16 || chunkBody + 16 > len) {
+        err = "fmt chunk too small or truncated";
+        return false;
+      }
+      if (readU16LE(buf + chunkBody) != 1 /* PCM */) {
+        err = "non-PCM format";
+        return false;
+      }
+      fmtChannels = readU16LE(buf + chunkBody + 2);
+      fmtRate     = readU32LE(buf + chunkBody + 4);
+      fmtBits     = readU16LE(buf + chunkBody + 14);
+      haveFmt = true;
+    } else if (tag(chunkId, "data")) {
+      dataBytes = chunkSize;
+      dataOffset = chunkBody;
+      haveData = true;
+      break; // data is last by construction; its body is not in this buffer
+    }
+
+    pos = chunkBody + chunkSize + (chunkSize & 1);
+  }
+
+  if (!haveFmt) { err = "missing fmt chunk"; return false; }
+  if (!haveData) { err = "missing data chunk in header prefix"; return false; }
+  if (fmtRate != 16000) { err = "unsupported sample rate (need 16000)"; return false; }
+  if (fmtBits != 16) { err = "unsupported bit depth (need 16)"; return false; }
+  if (fmtChannels != 1) { err = "unsupported channel count (need mono)"; return false; }
+  if (dataBytes < 2 || (dataBytes % 2) != 0) {
+    err = "data chunk not a whole number of 16-bit samples";
+    return false;
+  }
+
+  out.sampleRate    = fmtRate;
+  out.bitsPerSample = (uint8_t)fmtBits;
+  out.channels      = (uint8_t)fmtChannels;
+  out.pcm           = nullptr; // streamed, not resident
+  out.sampleCount   = dataBytes / 2;
+  return true;
+}
+
 } // namespace Storage
