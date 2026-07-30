@@ -48,7 +48,7 @@ namespace cp = ControlProto;
 // Firmware version reported on the wire (contract §1.3 fw=). BUMP THIS on
 // every behavioural firmware change — the host's fleet updater compares it
 // against the built image to decide who needs an OTA (fleet-ota spec).
-#define LT_FW_VERSION "2.4.0"
+#define LT_FW_VERSION "2.4.1"
 static const char *kFirmwareVersion = LT_FW_VERSION;
 
 // Embedded marker so the host can read a firmware.bin's version by scanning

@@ -53,23 +53,28 @@ static void synthRender() {
   }
 }
 
-// Play one full-scale PCM clip at kVolume. Scales in small chunks (bounded RAM,
-// any length) and feeds the DMA. Blocks for the clip duration while it drains;
-// hits are followed by a Flash state that masks the delay, so this is fine for v1.
-static void playPcm(const int16_t *data, size_t samples) {
-  // Start the peripheral only for the clip. Left running, the I2S clock cycles
-  // stale DMA buffers continuously and the amp plays it as a constant noise;
-  // stopping it removes the clock so the MAX98357A goes silent at idle.
-  i2s_start(kPort);
-  static int16_t chunk[256];
+// Scale mono samples to kVolume, widen them to stereo frames and feed the DMA.
+// Shared by the one-shot and streaming paths so both apply gain, framing and
+// watchdog handling identically.
+//
+// The widening is not cosmetic. The driver always consumes the write buffer as
+// interleaved L/R frames; the channel format only decides which slot is put on
+// the wire. Writing mono samples straight through therefore consumed two of
+// them per frame and discarded every second one -- playback an octave high and
+// aliased. Duplicating each sample into both slots makes one input sample equal
+// one frame, so the clip plays at its authored rate.
+static void writeMono(const int16_t *data, size_t samples) {
+  static int16_t frames[512]; // 256 mono samples -> 256 L/R pairs
   size_t i = 0;
   while (i < samples) {
     const size_t n = samples - i < 256 ? samples - i : 256;
     for (size_t j = 0; j < n; j++) {
-      chunk[j] = (int16_t)((float)data[i + j] * kVolume);
+      const int16_t s = (int16_t)((float)data[i + j] * kVolume);
+      frames[j * 2]     = s; // left
+      frames[j * 2 + 1] = s; // right
     }
     size_t written;
-    i2s_write(kPort, chunk, n * sizeof(int16_t), &written, portMAX_DELAY);
+    i2s_write(kPort, frames, n * 2 * sizeof(int16_t), &written, portMAX_DELAY);
     i += n;
 
     // Feed the task watchdog. i2s_write blocks on the DMA queue, which yields
@@ -79,6 +84,17 @@ static void playPcm(const int16_t *data, size_t samples) {
     // length limit; a 10 s clip now plays in full.
     esp_task_wdt_reset();
   }
+}
+
+// Play one full-scale PCM clip at kVolume. Scales in small chunks (bounded RAM,
+// any length) and feeds the DMA. Blocks for the clip duration while it drains;
+// hits are followed by a Flash state that masks the delay, so this is fine for v1.
+static void playPcm(const int16_t *data, size_t samples) {
+  // Start the peripheral only for the clip. Left running, the I2S clock cycles
+  // stale DMA buffers continuously and the amp plays it as a constant noise;
+  // stopping it removes the clock so the MAX98357A goes silent at idle.
+  i2s_start(kPort);
+  writeMono(data, samples);
   // i2s_write returns once samples are queued, not drained. Wait out the DMA
   // (4 x 64 frames @ 16 kHz ~= 16 ms) before stopping so the tail isn't cut.
   delay(20);
@@ -105,9 +121,13 @@ void begin(const Board::BoardProfile &p) {
     cfg.mode                 = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX);
     cfg.sample_rate          = kRate;
     cfg.bits_per_sample      = I2S_BITS_PER_SAMPLE_16BIT;
-    // ALL_LEFT: mono samples in, driver broadcasts to both I2S slots.
-    // MAX98357A with SD floating (pulled HIGH) selects the left slot.
-    cfg.channel_format       = I2S_CHANNEL_FMT_ALL_LEFT;
+    // True stereo framing. The clips are mono, so writeMono duplicates each
+    // sample into both slots rather than relying on a driver channel format to
+    // do it: ALL_LEFT still reads the buffer as L/R pairs, so mono data fed to
+    // it played an octave high with every second sample dropped. Sending real
+    // pairs is also indifferent to how the MAX98357A's SD pin has resolved
+    // (left-only or (L+R)/2), because both slots carry the same audio.
+    cfg.channel_format       = I2S_CHANNEL_FMT_RIGHT_LEFT;
     cfg.communication_format = I2S_COMM_FORMAT_STAND_I2S;
     cfg.intr_alloc_flags     = 0;
     cfg.dma_buf_count        = 4;
@@ -215,18 +235,7 @@ bool streamBegin() {
 void streamChunk(const int16_t *data, size_t samples) {
 #if defined(ESP32)
   if (kind != Board::AudioKind::I2sDac || data == nullptr || samples == 0) return;
-  static int16_t chunk[256];
-  size_t i = 0;
-  while (i < samples) {
-    const size_t n = samples - i < 256 ? samples - i : 256;
-    for (size_t j = 0; j < n; j++) {
-      chunk[j] = (int16_t)((float)data[i + j] * kVolume);
-    }
-    size_t written;
-    i2s_write(kPort, chunk, n * sizeof(int16_t), &written, portMAX_DELAY);
-    i += n;
-    esp_task_wdt_reset();
-  }
+  writeMono(data, samples);
 #else
   (void)data; (void)samples;
 #endif
