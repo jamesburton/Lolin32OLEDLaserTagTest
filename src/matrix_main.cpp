@@ -640,17 +640,25 @@ void onLine(const char *line) {
     HitDisplay::dark();
     delay(50);
 
+    // Sweep the init clock as well as the data-line order. If the link is
+    // marginal through a level translator, a slower clock gets further — and
+    // "gets further at 100 kHz" is a very different diagnosis from "fails
+    // identically at every speed".
     const struct {
       const char *label;
       int8_t mosi;
       int8_t miso;
+      uint32_t hz;
     } orders[] = {
-        {"normal", activeProfile.sdMosiPin, activeProfile.sdMisoPin},
-        {"swapped", activeProfile.sdMisoPin, activeProfile.sdMosiPin},
+        {"normal-400k", activeProfile.sdMosiPin, activeProfile.sdMisoPin, 400000},
+        {"normal-200k", activeProfile.sdMosiPin, activeProfile.sdMisoPin, 200000},
+        {"normal-100k", activeProfile.sdMosiPin, activeProfile.sdMisoPin, 100000},
+        {"swapped-400k", activeProfile.sdMisoPin, activeProfile.sdMosiPin, 400000},
     };
     for (const auto &o : orders) {
       Storage::SdProbe p = Storage::sdProbeRaw(activeProfile.sdCsPin, o.mosi,
-                                               o.miso, activeProfile.sdSckPin);
+                                               o.miso, activeProfile.sdSckPin,
+                                               o.hz);
       char msg[176];
       snprintf(msg, sizeof(msg),
                "SDPROBE order=%s mosi=%d miso=%d responded=%d r1=0x%02X "

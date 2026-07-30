@@ -48,21 +48,56 @@ bool sdBegin(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin) {
 uint32_t sdMountHz() { return mountHz; }
 
 namespace {
+// CRC7 over the 5 command bytes, as the SD spec defines it.
+//
+// In SPI mode the card is documented to ignore CRC for everything except CMD0
+// and CMD8 — but "documented to ignore" and "actually ignores" differ across
+// cards, and a hard-coded CRC that happens to be wrong for one command is
+// indistinguishable from a dead card. Computing it removes the doubt entirely.
+uint8_t crc7(const uint8_t *data, size_t len) {
+  uint8_t crc = 0;
+  for (size_t i = 0; i < len; i++) {
+    uint8_t b = data[i];
+    for (int bit = 0; bit < 8; bit++) {
+      crc = (uint8_t)((crc << 1) ^ (((crc >> 6) ^ (b >> 7)) & 1 ? 0x09 : 0));
+      crc &= 0x7F;
+      b = (uint8_t)(b << 1);
+    }
+  }
+  return (uint8_t)((crc << 1) | 1);
+}
+
+// Chip select for the current probe, so commands can deselect between calls.
+int8_t probeCs = -1;
+
 // Sends one 6-byte SD command and returns the first non-0xFF response byte.
 // 0xFF means the card never answered within the allowed poll window.
-uint8_t sdCommand(uint8_t cmd, uint32_t arg, uint8_t crc) {
+uint8_t sdCommand(uint8_t cmd, uint32_t arg, uint8_t crcIgnored) {
+  (void)crcIgnored;
+  const uint8_t frame[5] = {(uint8_t)(0x40 | cmd), (uint8_t)(arg >> 24),
+                            (uint8_t)(arg >> 16), (uint8_t)(arg >> 8),
+                            (uint8_t)arg};
+  const uint8_t crc = crc7(frame, 5);
+
+  // Deselect, clock, reselect around every command. A card behind a buffered
+  // or level-shifted breakout can latch mid-transaction if CS is simply held
+  // low for the whole sequence, which presents as the card answering the first
+  // command or two and then going silent forever.
+  if (probeCs >= 0) {
+    digitalWrite(probeCs, HIGH);
+    SPI.transfer(0xFF);
+    SPI.transfer(0xFF);
+    digitalWrite(probeCs, LOW);
+  }
   // Eight idle clocks before the command. The card needs a gap between the
   // previous response and the next command; without it some cards accept CMD0
   // and CMD8 (which happen to be preceded by long idle runs) and then fall
   // silent on the first command that follows a short response — exactly the
   // CMD0-ok/CMD8-ok/ACMD41-silent pattern.
-  SPI.transfer(0xFF);
-
-  SPI.transfer(0x40 | cmd);
-  SPI.transfer((uint8_t)(arg >> 24));
-  SPI.transfer((uint8_t)(arg >> 16));
-  SPI.transfer((uint8_t)(arg >> 8));
-  SPI.transfer((uint8_t)arg);
+  SPI.transfer(0xFF); // eight idle clocks before the command frame
+  for (int i = 0; i < 5; i++) {
+    SPI.transfer(frame[i]);
+  }
   SPI.transfer(crc);
   // The card may take up to 8 bytes to respond (spec allows NCR of 0-8).
   for (int i = 0; i < 10; i++) {
@@ -75,7 +110,8 @@ uint8_t sdCommand(uint8_t cmd, uint32_t arg, uint8_t crc) {
 }
 } // namespace
 
-SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin) {
+SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin,
+                   uint32_t clockHz) {
   SdProbe out{};
   out.responded = false;
   out.r1 = 0xFF;
@@ -85,10 +121,16 @@ SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin) 
   SPI.begin(sckPin, misoPin, mosiPin, csPin);
   pinMode(csPin, OUTPUT);
   digitalWrite(csPin, HIGH);
+  probeCs = csPin;
+
+  // Hold MISO high with the internal pull-up. A level-shifted breakout can
+  // leave MISO weakly driven between transactions, and a floating input reads
+  // as random rather than as the idle 0xFF the protocol expects.
+  pinMode(misoPin, INPUT_PULLUP);
 
   // Init must happen at 100-400 kHz; the card only accepts a faster clock
   // after it has left idle.
-  SPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+  SPI.beginTransaction(SPISettings(clockHz, MSBFIRST, SPI_MODE0));
 
   // >= 74 clocks with CS high and MOSI high puts the card into native SPI mode.
   for (int i = 0; i < 12; i++) {
@@ -135,8 +177,8 @@ SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin) 
       out.acmd41Tries = (uint16_t)(i + 1);
       if (r == 0x00) {
         out.ready = true;
-      } else {
-        delay(10);
+      } else if ((i % 20) == 19) {
+        delay(1); // mostly tight-poll; a long gap can itself lose the card
       }
     }
   }

@@ -49,7 +49,8 @@ struct SdProbe {
 /// no response at all means power/wiring/CS, while a valid idle response
 /// means the card is alive and the fault is above the bus.
 /// </remarks>
-SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin);
+SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin,
+                   uint32_t clockHz = 400000);
 
 /// True when a card is currently mounted.
 bool sdMounted();
