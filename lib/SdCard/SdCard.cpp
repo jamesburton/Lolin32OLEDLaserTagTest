@@ -170,15 +170,22 @@ SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin,
   // leaves idle the fault is the card or its supply, whereas a card that goes
   // ready but still will not mount points at the filesystem instead.
   if (out.responded) {
-    for (int i = 0; i < 200 && !out.ready; i++) {
-      out.cmd55 = sdCommand(55, 0, 0x65);           // CMD55: next is app cmd
-      const uint8_t r = sdCommand(41, 0x40000000UL, 0x77); // ACMD41, HCS set
+    // Poll to a DEADLINE, not a fixed count. The SD spec allows a card up to
+    // 1 second to complete initialisation, and a count-based loop silently
+    // encodes whatever wall-time the loop body happens to take — an earlier
+    // version of this tight-polled 200 times in well under 100 ms and reported
+    // a perfectly healthy card as "not ready".
+    const uint32_t deadline = millis() + 2000;
+    uint16_t tries = 0;
+    while (!out.ready && (int32_t)(millis() - deadline) < 0) {
+      out.cmd55 = sdCommand(55, 0, 0);              // CMD55: next is app cmd
+      const uint8_t r = sdCommand(41, 0x40000000UL, 0); // ACMD41, HCS set
       out.acmd41 = r;
-      out.acmd41Tries = (uint16_t)(i + 1);
+      out.acmd41Tries = ++tries;
       if (r == 0x00) {
         out.ready = true;
-      } else if ((i % 20) == 19) {
-        delay(1); // mostly tight-poll; a long gap can itself lose the card
+      } else {
+        delay(2);
       }
     }
   }

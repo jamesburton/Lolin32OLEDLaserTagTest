@@ -529,35 +529,36 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   a device reboot mid-match revives it (hp volatile) — accepted for now.
 
 ## Gotchas (carry forward — these cost real time)
-- **microSD status (2026-07-30): JP3 CONFIRMED as a real fault; card now
-  half-alive but still will not mount.** Bridging JP3 changed cs/miso/sck from
-  FLOATING to pulled-high (`sdpins`), and the card went from total silence to
-  answering CMD0 with `r1=0x01` and echoing CMD8's `0x01AA` check pattern —
-  a valid SDv2 card on the documented pin order (the swapped order still
-  fails, confirming mosi=34/miso=35). It then goes **completely silent at
-  CMD55/ACMD41** (`acmd41=0xFF` after 200 polls), so it never leaves idle and
-  no mount can succeed. Answering the two cheap commands and dying at the one
-  that starts the card's internal power-up is the classic signature of an
-  **under-volted card** — consistent with a Catalex/HW-125-style breakout whose
-  AMS1117 needs ~4.5 V in to deliver 3.3 V, being fed 3.3 V and delivering
-  ~2.2 V. **RETRACTED 2026-07-30:** the user's module's supply pin is labelled
-  **3V3**, so it is 3.3 V-native with no onboard step-down — the 3V3 rail is
-  the correct supply and 5 V would risk damaging it. Do NOT feed it 5 V.
-  Switching the board from LiPo to a 5 V USB-C supply also changed nothing.
-  Finer probing shows the card answers CMD0 (`0x01`) and CMD8
-  (`01000001AA`, valid SDv2) and is then silent to **everything** —
-  `cmd55=0xFF acmd41=0xFF cmd58=0xFF`. CMD58 (READ_OCR) is as cheap as CMD8,
-  so "browns out under init current" no longer fits either; the card stops
-  dead immediately after CMD8.
-  NEXT, in order of promise: (a) confirm **C4 (100 nF) and C5 (10 µF) are
-  actually fitted** at the SD socket — without the bulk/decoupling caps a card
-  can answer the first commands and then reset, and both are in `bom.csv` but
-  neither has been verified on this build; (b) measure VDD at J5 pin 1 under
-  load rather than idle. Ruled out: pin mapping (all 24 permutations), bus
-  speed (4 M/1 M/400 k), both cards (2 GB SDSC, 64 GB SDXC), format, partition
-  type, LED rail sag, CMD0 retries, inter-command idle clocks, pin contention
-  (GP33-36 are dedicated per the netlist), and board input supply.
-  **Not blocking anything** — clips live in flash (see Current State).
+- **microSD status (2026-07-30): JP3 was a real fault and is fixed; the card
+  now talks but BROWNS OUT during initialisation.** Best current diagnosis, and
+  it points at a designed-in option we left unpopulated.
+  - Bridging **JP3** took the card from electrically dead (cs/miso/sck
+    FLOATING) to alive: CMD0 -> `0x01`, CMD8 -> `01000001AA` (valid SDv2), on
+    the documented pin order.
+  - With the **64 GB** card and a correct 2 s ACMD41 deadline, the card answers
+    CMD55/ACMD41/CMD58 with `0x01` ("still initialising" — the healthy
+    in-progress reply) and then **stops responding partway through**, ending
+    `0xFF` after ~667 polls. Starting init and dying under it is the classic
+    supply-sag signature. Identical at 400/200/100 kHz, so not signal
+    integrity.
+  - The **2 GB** card never answers CMD55 at all, so it behaves differently and
+    may be separately faulty — do not treat the two cards as interchangeable
+    evidence.
+  - **LIKELY FIX — populate U5 (design decision D9, currently DNP).** The
+    carrier already reserves a dedicated 3V3 LDO for the SD rail, fed from
+    VCC5, precisely for "supply durability": U5 + C10/C11, then move **JP3** to
+    the U5-output leg. Today `SD_VDD` shares the ESP32-S3-Matrix module's small
+    onboard 3V3 regulator with the MCU, WiFi bursts and the matrix, and an SD
+    card draws ~100 mA at init. C4 (100 nF) and C5 (10 µF) ARE fitted and are
+    not enough on their own. Any external 3V3 supply for J5 pin 1 tests the
+    theory without fitting U5.
+  - Module is 3.3 V-native (supply pin labelled 3V3) — do NOT feed it 5 V.
+  - Eliminated: pin mapping (24 permutations), bus speed, both cards, format,
+    partition type, LED rail sag, board input supply (LiPo vs 5 V USB-C), CRC
+    (now computed, and proven right because CMD0/CMD8 check it and pass), CS
+    handling, command pacing, poll timing/deadline, and pin contention
+    (GP33-36 dedicated per netlist).
+  - **Not blocking anything** — clips live in flash (see Current State).
 - **microSD dead on a PCB carrier? Check JP3 before anything else.** JP3 is the
   card's ONLY power path (`VCC3V3` → `SD_VDD` → J5 pin 1) and its footprint is
   the **Open** solder-jumper variant, so it ships UNBRIDGED and must be closed
