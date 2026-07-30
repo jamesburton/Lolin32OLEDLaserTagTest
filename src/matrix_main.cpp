@@ -654,10 +654,11 @@ void onLine(const char *line) {
       char msg[176];
       snprintf(msg, sizeof(msg),
                "SDPROBE order=%s mosi=%d miso=%d responded=%d r1=0x%02X "
-               "cmd8=%02X%02X%02X%02X%02X v2=%d ready=%d acmd41=0x%02X tries=%u",
+               "cmd8=%02X%02X%02X%02X%02X v2=%d ready=%d cmd55=0x%02X acmd41=0x%02X "
+               "cmd58=0x%02X tries=%u",
                o.label, (int)o.mosi, (int)o.miso, p.responded ? 1 : 0, p.r1,
                p.cmd8[0], p.cmd8[1], p.cmd8[2], p.cmd8[3], p.cmd8[4],
-               p.cmd8Ok ? 1 : 0, p.ready ? 1 : 0, p.acmd41,
+               p.cmd8Ok ? 1 : 0, p.ready ? 1 : 0, p.cmd55, p.acmd41, p.cmd58,
                (unsigned)p.acmd41Tries);
       TagNet::event(msg);
       delay(50);

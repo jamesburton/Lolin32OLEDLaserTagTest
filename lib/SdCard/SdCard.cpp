@@ -129,7 +129,7 @@ SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin) 
   // ready but still will not mount points at the filesystem instead.
   if (out.responded) {
     for (int i = 0; i < 200 && !out.ready; i++) {
-      sdCommand(55, 0, 0x65);                       // CMD55: next is app cmd
+      out.cmd55 = sdCommand(55, 0, 0x65);           // CMD55: next is app cmd
       const uint8_t r = sdCommand(41, 0x40000000UL, 0x77); // ACMD41, HCS set
       out.acmd41 = r;
       out.acmd41Tries = (uint16_t)(i + 1);
@@ -138,6 +138,16 @@ SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin) 
       } else {
         delay(10);
       }
+    }
+  }
+
+  // CMD58 READ_OCR is another cheap, low-current command. If the card answers
+  // this AFTER falling silent on ACMD41, it is alive and merely refusing to
+  // initialise — which is a very different fault from having browned out.
+  if (out.responded) {
+    out.cmd58 = sdCommand(58, 0, 0xFD);
+    for (int i = 0; i < 4; i++) {
+      SPI.transfer(0xFF); // discard the 4 OCR bytes
     }
   }
 

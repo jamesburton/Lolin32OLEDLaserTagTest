@@ -27,6 +27,8 @@ struct SdProbe {
   bool cmd8Ok;      ///< True if CMD8 echoed the 0x1AA check pattern.
   bool ready;       ///< True if ACMD41 completed — the card left idle and is usable.
   uint8_t acmd41;   ///< Last ACMD41 reply: 0x01 = still idle, 0x05 = illegal, 0xFF = silent.
+  uint8_t cmd55;    ///< Last CMD55 reply. Distinguishes "died after CMD8" from "ACMD41 itself refused".
+  uint8_t cmd58;    ///< CMD58 (READ_OCR) reply — a cheap command re-tried after ACMD41.
   uint16_t acmd41Tries; ///< How many ACMD41 polls were made.
 };
 

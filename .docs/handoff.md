@@ -540,10 +540,23 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   that starts the card's internal power-up is the classic signature of an
   **under-volted card** — consistent with a Catalex/HW-125-style breakout whose
   AMS1117 needs ~4.5 V in to deliver 3.3 V, being fed 3.3 V and delivering
-  ~2.2 V. NEXT: measure VDD at the card socket (not the header), and try
-  feeding the module VCC from 5 V. Ruled out along the way: pin mapping (all 24
-  permutations), bus speed (4 M/1 M/400 k), card (2 GB SDSC and 64 GB SDXC),
-  format, partition type, LED rail sag, CMD0 retries and inter-command clocks.
+  ~2.2 V. **RETRACTED 2026-07-30:** the user's module's supply pin is labelled
+  **3V3**, so it is 3.3 V-native with no onboard step-down — the 3V3 rail is
+  the correct supply and 5 V would risk damaging it. Do NOT feed it 5 V.
+  Switching the board from LiPo to a 5 V USB-C supply also changed nothing.
+  Finer probing shows the card answers CMD0 (`0x01`) and CMD8
+  (`01000001AA`, valid SDv2) and is then silent to **everything** —
+  `cmd55=0xFF acmd41=0xFF cmd58=0xFF`. CMD58 (READ_OCR) is as cheap as CMD8,
+  so "browns out under init current" no longer fits either; the card stops
+  dead immediately after CMD8.
+  NEXT, in order of promise: (a) confirm **C4 (100 nF) and C5 (10 µF) are
+  actually fitted** at the SD socket — without the bulk/decoupling caps a card
+  can answer the first commands and then reset, and both are in `bom.csv` but
+  neither has been verified on this build; (b) measure VDD at J5 pin 1 under
+  load rather than idle. Ruled out: pin mapping (all 24 permutations), bus
+  speed (4 M/1 M/400 k), both cards (2 GB SDSC, 64 GB SDXC), format, partition
+  type, LED rail sag, CMD0 retries, inter-command idle clocks, pin contention
+  (GP33-36 are dedicated per the netlist), and board input supply.
   **Not blocking anything** — clips live in flash (see Current State).
 - **microSD dead on a PCB carrier? Check JP3 before anything else.** JP3 is the
   card's ONLY power path (`VCC3V3` → `SD_VDD` → J5 pin 1) and its footprint is
