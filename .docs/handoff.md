@@ -8,6 +8,60 @@ Codes & features behind interfaces so other guns/protocols and boards plug in.
 
 ## Current State
 
+### 🔊 SOUND FIXED — every clip had been playing an OCTAVE HIGH; fw 2.4.1 fleet-wide (2026-07-30)
+Commit `d7dd783`. Found because the quack "sounded like a loop synth effect,
+far too high pitch" — the user's ears caught a bug that had been latent since
+audio was first added, and that no test would have found.
+
+- **Root cause: `I2S_CHANNEL_FMT_ALL_LEFT` is NOT a mono mode.** The ESP-IDF
+  header defines it as *"load left channel data in both two channels"*; only
+  `ONLY_LEFT`/`ONLY_RIGHT` carry the "(mono mode)" annotation. **The driver
+  always consumes the write buffer as interleaved L/R frames** — the channel
+  format only chooses which slot reaches the wire. Feeding mono samples in
+  therefore ate two samples per frame and discarded the second: one octave
+  sharp with half the samples dropped. The dropped-sample aliasing, not the
+  speed alone, is what made a duck sound synthetic.
+- **Fix:** `I2S_CHANNEL_FMT_RIGHT_LEFT` + a shared `writeMono()` that
+  duplicates each mono sample into both slots in software. Doing the widening
+  ourselves rather than trusting a channel-format flag also makes playback
+  indifferent to how the MAX98357A's SD pin has resolved (left-only vs
+  (L+R)/2), since both slots carry identical audio. `writeMono()` also
+  absorbed the duplicated chunk loop that `playPcm` and `streamChunk` each
+  carried.
+- **⚠ THE PROCEDURAL SFX BANK WAS AFFECTED TOO.** Every siren/death/hit cue
+  has always played an octave high at half its authored length. They now sound
+  correct but *different from what anyone is used to* — the 180 ms hit is
+  genuinely 180 ms. If cues now feel sluggish in play that is a **tuning**
+  question (`tools/gen_sfx.py`), not a regression.
+- **How it was proven, and the instrument that failed first.** HTTP round-trip
+  timing works because `POST /api/command {"cmd":"play"}` blocks until playback
+  finishes — but **single measurements are far too noisy to conclude from**
+  (the same 5 s clip returned in 3.87/4.22/5.09 s, and a first play after
+  upload is consistently slow). Two early readings were mutually inconsistent
+  and briefly suggested a constant *offset* rather than a rate error. What
+  settled it was reading the ESP-IDF header, then confirming against
+  **repeated** runs of clips of different lengths:
+
+  | clip | authored | before fix | after fix |
+  |---|---|---|---|
+  | startup.wav | 1.10 s | — | 1.58 s |
+  | quack.wav | 10.01 s | 5.93/5.99/6.03 s | 10.68 s |
+  | 20 s test tone | 20.00 s | 10.81/10.91 s | 20.83 s |
+
+  The residual ~0.8 s is flash-read + HTTP overhead and is **flat across clip
+  length**, not proportional — which is what distinguishes "fixed" from "still
+  scaled wrong". Generate test tones with
+  `ffmpeg -f lavfi -i "sine=frequency=440:duration=N" -ar 16000 -ac 1 -c:a pcm_s16le`.
+- **Fleet is uniformly 2.4.1 and all four boards carry both clips**
+  (`/sfx/quack.wav` 320,334 B, `/sfx/startup.wav` 35,244 B) with
+  `startupSfx=/sfx/startup.wav` — so **every board now plays the rising tone on
+  boot**. Set `startupSfx` to `""` on any board to silence it.
+  `eb20f8` was still on 2.3.0 and had no `/api/files` at all, so it needed the
+  OTA before clips could be pushed.
+- **`{"ok":true}` from a play command is real evidence of working audio**, not a
+  formality: `playSdClip` fails unless `streamBegin()` finds an I2S DAC, so a
+  board without audio answers `bad command`. All four answered ok.
+
 ### Team assignment SHIPPED + fw 2.2.0 fleet-wide (2026-07-29)
 Closes the "no team assignment" gap. **Team 0 = `none` = a neutral target and
 is now the default**: shootable by everyone, scores for the SHOOTER's team,
@@ -290,11 +344,13 @@ execution ledger `.superpowers/sdd/progress.md` (gitignored).
   `damageMultiplier` 1–32 (presets 1/2/4/8/16 + custom) + per-SHOOTER-team
   `teamDamageMult` handicap (0 = inherit). `mult` serial verb; REST PATCH;
   NVS. EVT reports effective damage. 16x: dmg-2 rocket = full 32 hp.
-- **Quack SFX staged:** `assets/sfx/quack-attack{,-3s}.wav` (16 kHz mono s16
-  from the user's MP3). Use the **3 s** trim (full 10 s would trip the ~5 s
-  WDT with blocking playback); audition = copy to card as `/sfx/test.wav` +
-  `sdplay`. MAX98357A is a dumb PCM DAC — MP3 would need a firmware decoder
-  (libhelix/ESP8266Audio), noted as an option, not built.
+- **Quack SFX staged:** `assets/sfx/quack-attack{,-3s,-full}.wav` (16 kHz mono
+  s16 from the user's MP3). ⚠ **STALE ADVICE, superseded:** this originally
+  said to use the 3 s trim because the full 10 s clip would trip the WDT.
+  Streaming playback + `esp_task_wdt_reset()` removed that cap — **the full
+  10 s clip is what ships to the fleet**, from flash, not a card. MAX98357A is
+  a dumb PCM DAC — MP3 would need a firmware decoder (libhelix/ESP8266Audio),
+  noted as an option, not built.
 - Also this session: carrier **build guide**
   `instructions/BUILD_LASERTAG_CARRIER_ESP32_MATRIX.md` (netlist-verified
   jumper table, core vs optional stages, bring-up), PCB rev1 render embedded
@@ -358,16 +414,16 @@ all envs build (`lolin32`, `lolin32_displaytest`, `esp32-s3-matrix`, `native`).
 
 ## Hardware (all live on HAL firmware, OTA-flashable)
 
-### S3-Matrix fleet (4 boards) — WHOLE FLEET ON 2.1.0 (2026-07-29) ✅
-Hostnames persisted in NVS. Verified together on 2026-07-29 (all four powered
-and online simultaneously for the first time).
+### S3-Matrix fleet (4 boards) — WHOLE FLEET ON 2.4.1 (2026-07-30) ✅
+Hostnames persisted in NVS. All four verified online together, on the same
+firmware, each carrying both sound clips.
 
-| # | Hostname (mDNS .local) | Last IP | deviceId | Firmware | RSSI |
-|---|---|---|---|---|---|
-| 1 | `lasertag-matrix` | .34 | `752b38` | ✅ 2.1.0 (espota'd 2026-07-29) | −77 |
-| 2 | `lasertag-matrix2` | .180 | `eb278c` | ✅ 2.1.0 (espota'd 2026-07-29) | −70 |
-| 3 | `lasertag-matrix3` | .225 | `eb20f8` | ✅ 2.1.0 | −81 |
-| 4 | `lasertag-matrix4` | .218 | `e45614` | ✅ 2.1.0 | −74 |
+| # | Hostname (mDNS .local) | Last IP | deviceId | Firmware | Clips | Notes |
+|---|---|---|---|---|---|---|
+| 1 | `lasertag-matrix` | .34 | `752b38` | ✅ 2.4.1 | quack + startup | |
+| 2 | `lasertag-matrix2` | .180 | `eb278c` | ✅ 2.4.1 | quack + startup | **prototype board — the ONLY one that can transmit IR**; has the microSD module |
+| 3 | `lasertag-matrix3` | .225 | `eb20f8` | ✅ 2.4.1 | quack + startup | was two versions behind (2.3.0, no `/api/files`) |
+| 4 | `lasertag-matrix4` | .218 | `e45614` | ✅ 2.4.1 | quack + startup | PCB carrier with the microSD slot; runs the SD diagnostics |
 
 **The whole fleet now has `/api/update`, so `ota all` works — espota is no
 longer needed for any board.** Boards 1+2 were on the pre-2.1.0 image (no
@@ -586,6 +642,25 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   the guard must sample `ContentLength` BEFORE anything reads the content —
   reading buffers it and retroactively populates the header, which made the
   first version of that test pass against the very bug it existed to catch.
+- **`POST /api/files/file` needs MULTIPART, like `/api/update`** — it uses the
+  same `WebServer` upload machinery. `curl --data-binary @file` dies with
+  **exit 56 (recv failure)** and no server-side error; use `-F "file=@..."`.
+- **PowerShell single-quoted strings pass `\"` through LITERALLY**, so
+  `curl.exe -d '{\"cmd\":\"play\"}'` sends backslashes and the board answers
+  `{"error":"bad command"}` — which looks exactly like a firmware fault and
+  cost a wrong-diagnosis cycle here. Write the JSON to a file with
+  `Set-Content -NoNewline` and use `--data-binary "@file"`, or use the Bash
+  tool where `-d '{"cmd":"play"}'` works normally.
+- **A first `esp32-s3-matrix` build is ~8 minutes** — longer than the default
+  Bash timeout. Run it with `run_in_background` and read the output file;
+  `pio run | Select-Object -Last N` buffers everything until exit, so an empty
+  output file means "still compiling", not "failed".
+- **Timing playback over HTTP is legitimate but NOISY.** `POST /api/command`
+  with `{"cmd":"play"}` blocks until the clip finishes, so wall time measures
+  playback — but a single sample proves nothing (±25% run to run, and the
+  first play after an upload is consistently slow). Take repeated readings on
+  clips of at least two different lengths, and look at whether the deficit is
+  *proportional* (rate error) or *flat* (read/HTTP overhead).
 - **Heartbeat discovery can take up to ~90 s**, not the ~30 s assumed earlier
   — it varies run to run. A command issued against a half-filled roster
   silently covers only the boards discovered so far (`teams split` did exactly
@@ -624,9 +699,16 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   = Arduino core 3.x). Leaving the peripheral running clocks stale DMA buffers →
   **continuous loud noise** from the amp (hit this; cost a reflash). `playPcm`
   does `i2s_start` → write → `delay(20)` (DMA drain) → `i2s_zero_dma_buffer` →
-  `i2s_stop` per clip; `begin()` installs then immediately stops. Channel fmt is
-  `I2S_CHANNEL_FMT_ALL_LEFT` (mono to both slots; with SD floating the amp picks
-  left). Death clip blocks ~2.3 s (under the ~5 s idle WDT — fine).
+  `i2s_stop` per clip; `begin()` installs then immediately stops.
+- **`I2S_CHANNEL_FMT_ALL_LEFT` IS NOT A MONO MODE — do not "simplify" back to
+  it.** It means *"load left channel data in both two channels"*; the driver
+  still reads the buffer as interleaved L/R frames, so mono data fed to it
+  plays an **octave high with every second sample discarded**. Only
+  `ONLY_LEFT`/`ONLY_RIGHT` are annotated "(mono mode)" in the ESP-IDF header.
+  Channel fmt is now `RIGHT_LEFT` with `writeMono()` duplicating each sample
+  into both slots. This shipped broken from the very first audio commit and
+  survived every test — **only listening caught it** (fixed `d7dd783`;
+  see Current State for how it was measured).
 - **Volume = single runtime knob** `kVolume=0.15f` in `Sound.cpp` (samples baked
   full-scale, scaled at playback). Retune there — no need to regenerate SfxData.h.
 - **Regenerate SFX:** `python tools/gen_sfx.py` (needs numpy; ffmpeg only if you
@@ -642,7 +724,21 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
 - WiFi 2.4GHz `CommunityFibre10Gb_28750`; creds in NVS (survive OTA). Set via
   `tools/set-wifi.ps1 -Port COMx -Ssid ... -Password ...`.
 
-## Recent Changes (this session, 2026-07-26/27 — all committed, tree clean)
+## Recent Changes (2026-07-30 — committed and pushed, tree clean)
+- `d7dd783` **fix(sound): mono clips played an octave high.**
+  - `lib/Sound/Sound.cpp` — `channel_format` `ALL_LEFT` → `RIGHT_LEFT`; new
+    shared `writeMono()` (gain + mono→stereo widening + WDT reset) replacing
+    the duplicated chunk loops in `playPcm` and `streamChunk`.
+  - `src/matrix_main.cpp` — `LT_FW_VERSION` 2.4.0 → **2.4.1**.
+- **Fleet rollout:** all four boards OTA'd to 2.4.1 via `POST /api/update`
+  (multipart), both clips uploaded via `POST /api/files/file?path=...`
+  (**multipart too — raw `--data-binary` fails with curl exit 56**), and
+  `startupSfx` set on every board via `PATCH /api/config`.
+- Earlier same day (already committed): `6a3978d`, `146d758`, `a932c39`,
+  `6c08378`, `7dda1f0`, `cf76c08` — microSD diagnosis chain; `e26cfa9` —
+  sound clips in on-board flash, streamed (fw 2.4.0).
+
+## Recent Changes (2026-07-26/27 — all committed, tree clean)
 - `9632b44` hostname-from-NVS boot (multi-board mDNS/OTA); OTA IP → .34;
   Android options doc. Boards 2/3/4 flashed + provisioned (COM7/8/9,
   VID 303A:1001); board 1 verified then unpowered.
@@ -679,6 +775,25 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   (+post-impl notes), `docs/superpowers/plans/2026-07-12-game-manager.md`.
 
 ## Next Steps
+
+### ⏸ BLOCKED ON THE USER'S BENCH — microSD brownout test (carried over)
+This is the one open thread with a concrete next action, and **it needs the
+user at the hardware; do not start it or anything else in the backlog without
+asking.** Board `e45614` (192.168.1.218) runs the diagnostic firmware.
+- **Test A (5 minutes, parts on hand):** piggyback a **470 µF or 1000 µF /
+  10 V electrolytic in parallel with C5**, stripe/negative to the GND side.
+- **Test B:** **open JP3** and feed **J5 pin 1** (SD_VDD, square pad) from an
+  independent 3.3 V regulator fed off **J1 pin 1 (5 V)**, GND to J1 pin 2.
+  ⚠ **If Test B is abandoned, JP3 MUST be re-bridged or the card loses power.**
+- Then run `curl -s "http://192.168.1.218/cmd?c=sdprobe"` while capturing UDP
+  with `dotnet run --project tools/TagMonitor`. **Baseline to beat:** CMD55,
+  ACMD41 and CMD58 all answer `0x01` ("still initialising" — the healthy
+  in-progress reply) and the card then stops responding partway through,
+  ending `0xFF` after ~667 polls. **Success = `ready=1`.**
+- The user may also try a spare copy of the same breakout module. They have
+  ruled out SMD work and hard-to-source bare push-push sockets.
+- **Not blocking anything else** — sound ships from flash today.
+
 **RF is closed** — these guns are IR-only as far as this project is concerned;
 see the RF section above before reopening it.
 
@@ -701,8 +816,10 @@ IR path** — now genuinely reachable: board-to-board IR is VERIFIED (see Curren
 State), so aim `eb278c` at a dormant chase board and confirm the
 `EVT hit … dormant=1` penalty path. Fit IR LEDs to the PCB carriers (2N2222A
 footprint present, no emitter yet) so any board can shoot, not just the
-prototype. (d) audition the quack
-(`assets/sfx/quack-attack-3s.wav` → card as `/sfx/test.wav`, `sdplay`);
+prototype. (d) ✅ **DONE 2026-07-30 — quack auditioned, and it exposed the
+octave-high I2S bug** (see Current State); the full 10 s clip is on all four
+boards in flash. Follow-up: **re-audition the procedural cues**, which changed
+character with that fix and may want retuning in `tools/gen_sfx.py`.
 (e) run the APK on a real phone (see Managers above). Remaining Spec B
 leftovers: OLED-shows-health + configurable sound paths (8b); Spec C leftover:
 retaliation mode (#5).
