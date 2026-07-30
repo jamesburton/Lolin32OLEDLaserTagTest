@@ -136,16 +136,23 @@ firmware, the card's only current role is holding sound clips
 | Order | Ref | Part | Notes |
 |---|---|---|---|
 | 1 | C4 | 100 nF ceramic disc | SD_VDD decoupling at the socket. |
-| 2 | JP3 | Solder jumper, 2-pad | **VDD select.** Bridge to the default leg (sources SD_VDD from onboard VCC3V3) — see note below. |
+| 2 | JP3 | Solder jumper, 2-pad | ⚠ **MUST BE SOLDER-BRIDGED — this is the card's ONLY power path.** The footprint is the *Open* variant, so it arrives unbridged and `SD_VDD` is disconnected until you close it. Bridge the two pads to source `SD_VDD` from onboard VCC3V3. |
 | 3 | J5 | 1×6 pin socket | microSD breakout module. **3V3 pin → J5's square end** (pin 1). Pin order 3V3·CS·MOSI·CLK·MISO·GND. |
 | 4 | C5 | 10 µF/10 V electrolytic | Bulk reservoir for card init inrush. Electrolytic polarity: stripe = negative. |
+
+> ⚠ **If the card never mounts, check JP3 FIRST.** An unbridged JP3 leaves the
+> card completely unpowered, and the symptom is silence rather than an error:
+> CS/MISO/SCK all read floating, and the card answers no command at any bus
+> speed, on any card, in any pin ordering. The board's 3V3 rail still measures
+> correctly — `SD_VDD` is downstream of JP3, so probe **J5 pin 1** (the square
+> pad), not the rail. Diagnose remotely with the `sdpins` command.
 
 **Verify on board:** the design docs describe an *optional* dedicated 3.3 V
 LDO (U5) for the SD rail, with JP3 selecting between onboard VCC3V3 and the
 LDO's output. **U5 and its input/output caps (C10/C11) are not in
 `bom.csv` and do not appear on the render** — this board was fabricated
-without the LDO option. JP3 should simply be left on its default bridge
-(VCC3V3 → SD_VDD); there is no LDO output to select instead on this board.
+without the LDO option, so bridge JP3 to the VCC3V3 leg; there is no LDO
+output to select instead on this board.
 
 ### External WS2812 output
 
@@ -256,7 +263,7 @@ wired two ways:
 | **JP6** | Open | Bridges `VCC5_IN` to `VCC5`, shorting across SW2 — board is powered whenever J0 has power, **regardless of switch position** | Leave open so SW2 actually switches the board. Close only if you've removed/bypassed SW2 entirely. |
 | **JP1** (audio mute) | Open | Wires GP2 to the MAX98357A SD pin for a firmware hard-mute of the amp | Mutually exclusive with JP4/JP5 (GP2 role selector) — see below |
 | **JP2** (audio gain) | Float | GND leg = 15 dB, VIN leg = 3 dB (float = 9 dB) | Volume is controlled in software (`kVolume`); this is a build-time baseline gain choice only |
-| **JP3** (microSD VDD select) | Bridged to onboard VCC3V3 | Would source SD_VDD from a dedicated LDO (U5) instead | **This board has no U5 fitted** (not in `bom.csv`/render) — leave JP3 on its default bridge |
+| **JP3** (microSD VDD select) | ⚠ **Open (unbridged) as fabricated** — the footprint is the *Open* variant, so there is NO default bridge | Bridging it connects `VCC3V3` → `SD_VDD`, powering the card. The alternative leg would source from a dedicated LDO (U5) | **MUST be bridged for the microSD to work at all.** This board has no U5 fitted (not in `bom.csv`/render), so bridge the VCC3V3 leg. An unbridged JP3 leaves the card unpowered and silent — see the microSD section |
 | **JP4** (GP2 role: button) | Open | GP2 reads SW1 / J12 (external button), internal pull-up | Mutually exclusive with JP1/JP5 |
 | **JP5** (GP2 role: touch) | Open | GP2 reads J13 SIG (touch sensor) | Recommended GP2 role if you use one at all. Mutually exclusive with JP1/JP4 |
 

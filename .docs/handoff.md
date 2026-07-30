@@ -529,6 +529,16 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   a device reboot mid-match revives it (hp volatile) — accepted for now.
 
 ## Gotchas (carry forward — these cost real time)
+- **microSD dead on a PCB carrier? Check JP3 before anything else.** JP3 is the
+  card's ONLY power path (`VCC3V3` → `SD_VDD` → J5 pin 1) and its footprint is
+  the **Open** solder-jumper variant, so it ships UNBRIDGED and must be closed
+  with solder. Unpowered presents as pure silence, not an error: CS/MISO/SCK
+  all read floating and the card answers nothing at any speed, on any card, in
+  any pin permutation. The board's 3V3 rail still measures fine — `SD_VDD` is
+  downstream of JP3, so probe **J5 pin 1**, not the rail. `sdpins` diagnoses it
+  remotely. The build guide previously contradicted itself here (the assembly
+  step said to bridge it; the jumper table implied it arrived bridged) — fixed
+  2026-07-30.
 - **Discover boards by the heartbeat roster, NOT by scanning the subnet.** An
   HTTP sweep of all 254 addresses found only 1 of the 2 boards that were up
   (slow boards time out before answering), while the UDP roster found both.
