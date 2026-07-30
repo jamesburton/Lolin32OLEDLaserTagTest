@@ -51,6 +51,13 @@ namespace {
 // Sends one 6-byte SD command and returns the first non-0xFF response byte.
 // 0xFF means the card never answered within the allowed poll window.
 uint8_t sdCommand(uint8_t cmd, uint32_t arg, uint8_t crc) {
+  // Eight idle clocks before the command. The card needs a gap between the
+  // previous response and the next command; without it some cards accept CMD0
+  // and CMD8 (which happen to be preceded by long idle runs) and then fall
+  // silent on the first command that follows a short response — exactly the
+  // CMD0-ok/CMD8-ok/ACMD41-silent pattern.
+  SPI.transfer(0xFF);
+
   SPI.transfer(0x40 | cmd);
   SPI.transfer((uint8_t)(arg >> 24));
   SPI.transfer((uint8_t)(arg >> 16));
@@ -88,10 +95,22 @@ SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin) 
     SPI.transfer(0xFF);
   }
 
-  digitalWrite(csPin, LOW);
-  // CMD0 GO_IDLE_STATE. CRC is fixed (0x95) and mandatory for this one command.
-  out.r1 = sdCommand(0, 0, 0x95);
-  out.responded = out.r1 != 0xFF;
+  // Cards routinely need several CMD0 attempts before leaving native mode —
+  // the spec expects the host to retry rather than give up on the first
+  // silence, and a single try can read as a dead card when it is merely slow.
+  for (int attempt = 0; attempt < 10 && !out.responded; attempt++) {
+    digitalWrite(csPin, HIGH);
+    for (int i = 0; i < 2; i++) {
+      SPI.transfer(0xFF);
+    }
+    digitalWrite(csPin, LOW);
+    // CMD0 GO_IDLE_STATE. CRC is fixed (0x95) and mandatory for this command.
+    out.r1 = sdCommand(0, 0, 0x95);
+    out.responded = out.r1 != 0xFF;
+    if (!out.responded) {
+      delay(10);
+    }
+  }
 
   if (out.responded) {
     // CMD8 SEND_IF_COND: ask for 2.7-3.6 V with check pattern 0xAA. An SDv2
@@ -102,6 +121,24 @@ SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin) 
       out.cmd8[i + 1] = SPI.transfer(0xFF);
     }
     out.cmd8Ok = (out.cmd8[3] == 0x01) && (out.cmd8[4] == 0xAA);
+  }
+
+  // Complete the init handshake: ACMD41 until the card leaves idle. This is
+  // what separates "the card answers" from "the card is usable" — if it never
+  // leaves idle the fault is the card or its supply, whereas a card that goes
+  // ready but still will not mount points at the filesystem instead.
+  if (out.responded) {
+    for (int i = 0; i < 200 && !out.ready; i++) {
+      sdCommand(55, 0, 0x65);                       // CMD55: next is app cmd
+      const uint8_t r = sdCommand(41, 0x40000000UL, 0x77); // ACMD41, HCS set
+      out.acmd41 = r;
+      out.acmd41Tries = (uint16_t)(i + 1);
+      if (r == 0x00) {
+        out.ready = true;
+      } else {
+        delay(10);
+      }
+    }
   }
 
   digitalWrite(csPin, HIGH);

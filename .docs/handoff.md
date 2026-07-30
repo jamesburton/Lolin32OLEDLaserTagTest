@@ -529,6 +529,22 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   a device reboot mid-match revives it (hp volatile) — accepted for now.
 
 ## Gotchas (carry forward — these cost real time)
+- **microSD status (2026-07-30): JP3 CONFIRMED as a real fault; card now
+  half-alive but still will not mount.** Bridging JP3 changed cs/miso/sck from
+  FLOATING to pulled-high (`sdpins`), and the card went from total silence to
+  answering CMD0 with `r1=0x01` and echoing CMD8's `0x01AA` check pattern —
+  a valid SDv2 card on the documented pin order (the swapped order still
+  fails, confirming mosi=34/miso=35). It then goes **completely silent at
+  CMD55/ACMD41** (`acmd41=0xFF` after 200 polls), so it never leaves idle and
+  no mount can succeed. Answering the two cheap commands and dying at the one
+  that starts the card's internal power-up is the classic signature of an
+  **under-volted card** — consistent with a Catalex/HW-125-style breakout whose
+  AMS1117 needs ~4.5 V in to deliver 3.3 V, being fed 3.3 V and delivering
+  ~2.2 V. NEXT: measure VDD at the card socket (not the header), and try
+  feeding the module VCC from 5 V. Ruled out along the way: pin mapping (all 24
+  permutations), bus speed (4 M/1 M/400 k), card (2 GB SDSC and 64 GB SDXC),
+  format, partition type, LED rail sag, CMD0 retries and inter-command clocks.
+  **Not blocking anything** — clips live in flash (see Current State).
 - **microSD dead on a PCB carrier? Check JP3 before anything else.** JP3 is the
   card's ONLY power path (`VCC3V3` → `SD_VDD` → J5 pin 1) and its footprint is
   the **Open** solder-jumper variant, so it ships UNBRIDGED and must be closed
