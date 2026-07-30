@@ -299,6 +299,21 @@ J3 is fitted (default left floating = 9 dB).
 
 ## Block 3 — `microsd_spi`
 
+> ⚠ **REV1 REALITY CHECK (2026-07-30):** the optional dedicated-LDO path (D9)
+> was specified here but **never laid out**. `U5`, `C10` and `C11` have NO
+> footprints on the fabricated board — verified against
+> `layouts/default/default.kicad_pcb`, whose only refs are C1-C6, C9, D2,
+> H1-H4, J0-J14, JP1-JP6, Q1, R1-R3, R7, R9, SW1-SW2. `JP3` is also a plain
+> **2-pad bridge**, not the 3-way selector the text below implies, so there is
+> no "move JP3 to the U5 leg" on rev1 — it either bridges VCC3V3 to SD_VDD or
+> it does not.
+>
+> This matters because evidence now points at SD supply sag as the reason cards
+> will not initialise (they answer CMD0/CMD8, begin ACMD41, then die). **rev2
+> should actually place U5 + C10/C11 and make JP3 a 3-way selector**, and
+> should size `C5` far above 10 µF. Until then the only way to give the card an
+> independent rail is an off-board regulator on flying leads with JP3 opened.
+
 microSD card in SPI mode on GP33–36. Primary footprint is now a **6-pin 0.1″
 female socket** for an external breakout module (D4); the direct-solder push-push
 microSD socket is demoted to "alternative" (footprint-swap, same nets). Supply is
