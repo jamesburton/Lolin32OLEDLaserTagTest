@@ -106,6 +106,36 @@ int formatDormantHitEvent(char *out, size_t outSize, const char *victim,
                           uint32_t ts);
 
 /// <summary>
+/// Formats a suppressed self-hit event line:
+/// `EVT selfhit team=&lt;int&gt; dmg=&lt;int&gt; ts=&lt;ms&gt;`. Emitted when a
+/// decoded frame is dropped by TX blanking (our own emission arriving back at
+/// our own receiver — bench reflection, or direct emitter-to-receiver
+/// line-of-sight on an unenclosed board). No hp change.
+/// </summary>
+/// <param name="out">Destination buffer.</param>
+/// <param name="outSize">Size of the destination buffer.</param>
+/// <param name="team">Team decoded from the suppressed frame.</param>
+/// <param name="dmg">Damage decoded from the suppressed frame.</param>
+/// <param name="ts">Device millis() timestamp.</param>
+/// <returns>Number of characters written (excluding the NUL), or -1 on error.</returns>
+int formatSelfHitEvent(char *out, size_t outSize, int team, int dmg,
+                       uint32_t ts);
+
+/// <summary>
+/// True when a frame decoded at <paramref name="nowMs"/> falls inside the
+/// self-hit blanking window after our own IR transmission ended at
+/// <paramref name="txEndMs"/>. Wrap-safe (unsigned subtraction), so it works
+/// across the millis() rollover. Callers must track separately whether the
+/// device has ever transmitted — a stale txEndMs from ~49.7 days ago would
+/// otherwise alias back into the window.
+/// </summary>
+/// <param name="nowMs">millis() at frame-decode time.</param>
+/// <param name="txEndMs">millis() captured when our own TX completed.</param>
+/// <param name="windowMs">Blanking window length in milliseconds.</param>
+/// <returns>True when the decode should be suppressed as a self-hit.</returns>
+bool txBlankActive(uint32_t nowMs, uint32_t txEndMs, uint32_t windowMs);
+
+/// <summary>
 /// Formats a state-event line (contract §1.4):
 /// `EVT state s=&lt;ready|idle|dead|respawn&gt; [hp=&lt;int&gt;] ts=&lt;ms&gt;`.
 /// The optional `hp=` token is emitted only when <paramref name="hp"/> is &gt;= 0
@@ -234,6 +264,8 @@ struct ConfigDoc {
   size_t enabledTeamsCount = 0;          ///< number of valid enabledTeams
   char protocolId[16] = "vatos";         ///< which IrProtocol decoded
   int brightness = 13;                   ///< LED brightness 0..255
+  int volume = 255;                      ///< playback volume 0..255 (255 = full software gain)
+  char extRole[8] = "mirror";            ///< external WS2812 role: off|mirror|team|pulse
   int teamIndex[TeamColourCount] = {1, 2, 3, 4};        ///< colour map keys
   char teamColour[TeamColourCount][8] = {"#0000FF", "#FF0000", "#00FF00",
                                          "#FFFFFF"};     ///< "#RRGGBB" values
@@ -346,6 +378,8 @@ enum class CommandKind {
   Reset,    ///< `{ "cmd": "reset" }` — revive to full health (CTL reset parity)
   Fire,     ///< `{ "cmd": "fire", "team": <int>, "damage": <int> }` — emit a Vatos IR shot
   Play,     ///< `{ "cmd": "play", "path": "/sfx/x.wav" }` — play a WAV from the microSD
+  LedTest,  ///< `{ "cmd": "ledtest" }` — pixels 0-3 R/G/B/White, held ~10 s (wiring/colour-order check)
+  PinSet,   ///< `{ "cmd": "pinset", "value": 0|1 }` — drive the external WS2812 DATA pin static for 15 s (continuity check; reboot to fully restore LED output)
 };
 
 /// <summary>Parsed POST /api/command body (contract §2.2 CommandDoc).</summary>

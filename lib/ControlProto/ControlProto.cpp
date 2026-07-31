@@ -123,6 +123,18 @@ int formatDormantHitEvent(char *out, size_t outSize, const char *victim,
   return m < 0 ? m : n + m;
 }
 
+int formatSelfHitEvent(char *out, size_t outSize, int team, int dmg,
+                       uint32_t ts) {
+  return snprintf(out, outSize, "EVT selfhit team=%d dmg=%d ts=%lu", team, dmg,
+                  (unsigned long)ts);
+}
+
+bool txBlankActive(uint32_t nowMs, uint32_t txEndMs, uint32_t windowMs) {
+  // Unsigned subtraction is exact modulo 2^32, so this stays correct when
+  // millis() wraps between the TX stamp and the decode.
+  return (uint32_t)(nowMs - txEndMs) <= windowMs;
+}
+
 int formatStateEvent(char *out, size_t outSize, const char *state, int hp,
                      uint32_t ts) {
   // `hp` is optional in the grammar: emit it only when non-negative so
@@ -297,6 +309,7 @@ size_t serializeConfig(const ConfigDoc &cfg, char *out, size_t outSize) {
   }
   doc["protocolId"] = cfg.protocolId;
   doc["brightness"] = cfg.brightness;
+  doc["volume"] = cfg.volume;
   JsonObject colours = doc["teamColours"].to<JsonObject>();
   for (size_t i = 0; i < TeamColourCount; i++) {
     char key[4];
@@ -324,6 +337,7 @@ size_t serializeConfig(const ConfigDoc &cfg, char *out, size_t outSize) {
   }
   doc["chaseColour"] = cfg.chaseColour;
   doc["startupSfx"] = cfg.startupSfx;
+  doc["extRole"] = cfg.extRole;
   return serializeJson(doc, out, outSize);
 }
 
@@ -380,6 +394,33 @@ PatchResult applyConfigPatch(const char *json, ConfigDoc &cfg) {
       staged.protocolId[sizeof(staged.protocolId) - 1] = '\0';
     } else if (strcmp(key, "brightness") == 0) {
       staged.brightness = kv.value().as<int>();
+    } else if (strcmp(key, "volume") == 0) {
+      // Type check is load-bearing (see ownTeam): a non-numeric value reads as
+      // 0, which is legal, so {"volume":"loud"} would silently mute the board.
+      if (!kv.value().is<int>()) {
+        snprintf(res.error, sizeof(res.error), "bad type: volume");
+        return res;
+      }
+      const int v = kv.value().as<int>();
+      if (v < 0 || v > 255) {
+        snprintf(res.error, sizeof(res.error), "volume must be 0-255");
+        return res;
+      }
+      staged.volume = v;
+    } else if (strcmp(key, "extRole") == 0) {
+      if (!kv.value().is<const char *>()) {
+        snprintf(res.error, sizeof(res.error), "bad type: extRole");
+        return res;
+      }
+      const char *v = kv.value().as<const char *>();
+      if (strcmp(v, "off") != 0 && strcmp(v, "mirror") != 0 &&
+          strcmp(v, "team") != 0 && strcmp(v, "pulse") != 0) {
+        snprintf(res.error, sizeof(res.error),
+                 "extRole must be off/mirror/team/pulse");
+        return res;
+      }
+      strncpy(staged.extRole, v, sizeof(staged.extRole) - 1);
+      staged.extRole[sizeof(staged.extRole) - 1] = '\0';
     } else if (strcmp(key, "enabledTeams") == 0) {
       JsonArray arr = kv.value().as<JsonArray>();
       size_t i = 0;
@@ -560,6 +601,15 @@ bool parseCommand(const char *json, CommandDoc &out) {
   const char *cmd = c.as<const char *>();
   if (strcmp(cmd, "identify") == 0) {
     out.kind = CommandKind::Identify;
+    return true;
+  }
+  if (strcmp(cmd, "ledtest") == 0) {
+    out.kind = CommandKind::LedTest;
+    return true;
+  }
+  if (strcmp(cmd, "pinset") == 0) {
+    out.kind = CommandKind::PinSet;
+    out.value = doc["value"].as<int>();
     return true;
   }
   if (strcmp(cmd, "bright") == 0) {

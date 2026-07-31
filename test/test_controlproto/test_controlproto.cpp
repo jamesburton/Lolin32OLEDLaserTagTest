@@ -156,11 +156,12 @@ void test_serialize_config_golden() {
   TEST_ASSERT_EQUAL_STRING(
       "{\"deviceId\":\"a1b2c3\",\"hostname\":\"lasertag-matrix\",\"ownTeam\":2,"
       "\"enabledTeams\":[1,2,3,4],\"protocolId\":\"vatos\",\"brightness\":13,"
+      "\"volume\":255,"
       "\"teamColours\":{\"1\":\"#0000FF\",\"2\":\"#FF0000\",\"3\":\"#00FF00\","
       "\"4\":\"#FFFFFF\"},\"teamSfx\":{\"1\":0,\"2\":2,\"3\":3,\"4\":5},"
       "\"deathSfx\":6,\"startHp\":32,\"damageMultiplier\":1,"
       "\"teamDamageMult\":{\"1\":0,\"2\":0,\"3\":0,\"4\":0},"
-      "\"chaseColour\":\"#FFA500\",\"startupSfx\":\"\"}",
+      "\"chaseColour\":\"#FFA500\",\"startupSfx\":\"\",\"extRole\":\"mirror\"}",
       buf);
 }
 
@@ -529,6 +530,98 @@ void test_format_dormant_hit_event() {
       buf);
 }
 
+void test_parse_command_ledtest() {
+  CommandDoc cmd;
+  TEST_ASSERT_TRUE(parseCommand("{\"cmd\":\"ledtest\"}", cmd));
+  TEST_ASSERT_EQUAL_INT((int)CommandKind::LedTest, (int)cmd.kind);
+}
+
+void test_parse_command_pinset() {
+  CommandDoc cmd;
+  TEST_ASSERT_TRUE(parseCommand("{\"cmd\":\"pinset\",\"value\":1}", cmd));
+  TEST_ASSERT_EQUAL_INT((int)CommandKind::PinSet, (int)cmd.kind);
+  TEST_ASSERT_EQUAL_INT(1, cmd.value);
+  TEST_ASSERT_TRUE(parseCommand("{\"cmd\":\"pinset\",\"value\":0}", cmd));
+  TEST_ASSERT_EQUAL_INT(0, cmd.value);
+}
+
+void test_patch_config_volume_valid_and_invalid() {
+  ConfigDoc cfg;
+  cfg.volume = 255;
+
+  // Valid values apply and persist alongside other fields.
+  PatchResult r = applyConfigPatch("{\"volume\":128}", cfg);
+  TEST_ASSERT_TRUE(r.ok);
+  TEST_ASSERT_EQUAL_INT(128, cfg.volume);
+  r = applyConfigPatch("{\"volume\":0}", cfg);
+  TEST_ASSERT_TRUE(r.ok);
+  TEST_ASSERT_EQUAL_INT(0, cfg.volume);
+
+  // Out of range rejected, config unchanged.
+  r = applyConfigPatch("{\"volume\":256}", cfg);
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL_STRING("volume must be 0-255", r.error);
+  TEST_ASSERT_EQUAL_INT(0, cfg.volume);
+  r = applyConfigPatch("{\"volume\":-1}", cfg);
+  TEST_ASSERT_FALSE(r.ok);
+
+  // Non-numeric rejected (would otherwise read as 0 and silently mute).
+  r = applyConfigPatch("{\"volume\":\"loud\"}", cfg);
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL_STRING("bad type: volume", r.error);
+  TEST_ASSERT_EQUAL_INT(0, cfg.volume);
+}
+
+void test_patch_config_ext_role_valid_and_invalid() {
+  ConfigDoc cfg;
+
+  // All four roles accepted.
+  const char *valid[] = {"off", "mirror", "team", "pulse"};
+  for (const char *role : valid) {
+    char body[40];
+    snprintf(body, sizeof(body), "{\"extRole\":\"%s\"}", role);
+    PatchResult r = applyConfigPatch(body, cfg);
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_EQUAL_STRING(role, cfg.extRole);
+  }
+
+  // Unknown role rejected, config unchanged.
+  PatchResult r = applyConfigPatch("{\"extRole\":\"disco\"}", cfg);
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL_STRING("extRole must be off/mirror/team/pulse", r.error);
+  TEST_ASSERT_EQUAL_STRING("pulse", cfg.extRole);
+
+  // Non-string rejected.
+  r = applyConfigPatch("{\"extRole\":3}", cfg);
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL_STRING("bad type: extRole", r.error);
+}
+
+void test_format_self_hit_event() {
+  char buf[96];
+  int n = formatSelfHitEvent(buf, sizeof(buf), 2, 1, 5678);
+  TEST_ASSERT_GREATER_THAN(0, n);
+  TEST_ASSERT_EQUAL_STRING("EVT selfhit team=2 dmg=1 ts=5678", buf);
+}
+
+void test_tx_blank_active_window() {
+  // Inside the window: at TX end, mid-window, and exactly on the boundary.
+  TEST_ASSERT_TRUE(txBlankActive(1000, 1000, 250));
+  TEST_ASSERT_TRUE(txBlankActive(1100, 1000, 250));
+  TEST_ASSERT_TRUE(txBlankActive(1250, 1000, 250));
+  // One past the boundary: a real incoming shot, not blanked.
+  TEST_ASSERT_FALSE(txBlankActive(1251, 1000, 250));
+  TEST_ASSERT_FALSE(txBlankActive(60000, 1000, 250));
+}
+
+void test_tx_blank_active_millis_wrap() {
+  // TX ended just before the 32-bit millis() rollover; the frame decodes just
+  // after it. Unsigned subtraction keeps the window contiguous across the wrap.
+  const uint32_t nearWrap = 0xFFFFFF38u; // 200 ms before rollover
+  TEST_ASSERT_TRUE(txBlankActive(50, nearWrap, 250));
+  TEST_ASSERT_FALSE(txBlankActive(51, nearWrap, 250));
+}
+
 void test_config_chase_colour_serialize_patch() {
   ConfigDoc cfg;
   strncpy(cfg.deviceId, "a1b2c3", sizeof(cfg.deviceId) - 1);
@@ -680,6 +773,13 @@ int main(int, char **) {
   RUN_TEST(test_parse_control_id_filter_and_new_verbs);
   RUN_TEST(test_parse_control_chase_and_score);
   RUN_TEST(test_format_dormant_hit_event);
+  RUN_TEST(test_parse_command_ledtest);
+  RUN_TEST(test_parse_command_pinset);
+  RUN_TEST(test_patch_config_volume_valid_and_invalid);
+  RUN_TEST(test_patch_config_ext_role_valid_and_invalid);
+  RUN_TEST(test_format_self_hit_event);
+  RUN_TEST(test_tx_blank_active_window);
+  RUN_TEST(test_tx_blank_active_millis_wrap);
   RUN_TEST(test_config_chase_colour_serialize_patch);
   RUN_TEST(test_score_grid_two_team_middle_out);
   RUN_TEST(test_score_grid_quadrants);

@@ -35,6 +35,9 @@ static constexpr uint32_t   kRate    = 16000;
 // Master playback gain, applied to every clip at output. Samples are stored at
 // full scale, so this single knob retunes the level without regenerating data.
 static constexpr float      kVolume  = 0.15f;
+// Effective gain: kVolume scaled by the runtime volume config (setVolume).
+// Defaults to full kVolume so boards without the config behave as before.
+static float                sGain    = kVolume;
 static constexpr int        kHitMs   = 180;
 static constexpr int        kHitSamps = (int)(kRate * kHitMs / 1000); // 2880
 
@@ -69,7 +72,7 @@ static void writeMono(const int16_t *data, size_t samples) {
   while (i < samples) {
     const size_t n = samples - i < 256 ? samples - i : 256;
     for (size_t j = 0; j < n; j++) {
-      const int16_t s = (int16_t)((float)data[i + j] * kVolume);
+      const int16_t s = (int16_t)((float)data[i + j] * sGain);
       frames[j * 2]     = s; // left
       frames[j * 2 + 1] = s; // right
     }
@@ -149,6 +152,14 @@ void begin(const Board::BoardProfile &p) {
     i2s_zero_dma_buffer(kPort);
     i2s_stop(kPort);
   }
+#endif
+}
+
+void setVolume(uint8_t v) {
+#if defined(ESP32)
+  sGain = kVolume * ((float)v / 255.0f);
+#else
+  (void)v;
 #endif
 }
 

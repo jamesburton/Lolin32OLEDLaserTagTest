@@ -12,6 +12,14 @@ void begin(const Board::BoardProfile &p);
 void cue(Cue c); // no-op if no audio output is present
 bool present();
 
+/// <summary>
+/// Sets playback volume as a fraction of the master software gain: 255 = the
+/// full gain (kVolume), 0 = silent. Applied to every subsequent sample on both
+/// the one-shot and streaming paths; takes effect mid-clip. No-op on piezo.
+/// </summary>
+/// <param name="v">Volume 0..255.</param>
+void setVolume(uint8_t v);
+
 // --- SFX bank (I2sDac only) ------------------------------------------------
 // The bank is the embedded SfxData.h sample set. The caller (which owns the
 // team/death assignment config) selects what to play by index. Out-of-range

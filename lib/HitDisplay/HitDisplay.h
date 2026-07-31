@@ -33,6 +33,38 @@ void spinFrame(Board::Rgb c, uint8_t phase);
 /// Matrix-only: a no-op on other display kinds.
 void scoreboard(const uint8_t grid[64], uint8_t num, uint8_t den);
 
+/// <summary>
+/// Wiring/colour-order diagnostic: pixels 0-3 lit Red, Green, Blue, White, the
+/// rest dark, painted on BOTH the onboard matrix and the external output. If a
+/// panel shows a different colour sequence its colour order differs from the
+/// configured one. Matrix-only: a no-op on other kinds.
+/// </summary>
+void ledTest();
+
+/// <summary>
+/// What the external WS2812 output (carrier J8 / GP6) renders. The external
+/// output has its own frame buffer, independent of the onboard matrix.
+/// </summary>
+enum class ExtRole : uint8_t {
+  Off,    ///< external output dark
+  Mirror, ///< copy of the onboard matrix frame (the pre-2.6 behaviour)
+  Team,   ///< solid own-team colour
+  Pulse,  ///< own-team colour breathing (ongoing ambient effect)
+};
+
+/// <summary>Sets the external output's role. Takes effect on the next tick/frame.</summary>
+/// <param name="r">The role to render.</param>
+void setExtRole(ExtRole r);
+
+/// <summary>
+/// Drives the external output's own rendering (Team/Pulse/Off roles). Call
+/// every loop iteration; internally throttled to ~30 ms frames and idle for
+/// Mirror (which piggybacks on onboard frames). No-op without a matrix.
+/// </summary>
+/// <param name="nowMs">Current millis().</param>
+/// <param name="team">Own-team index for colour lookup (0 = neutral).</param>
+void extTick(uint32_t nowMs, int team);
+
 void flashTeam(int team); // solid-fill the team colour (one frame)
 void solid(Board::Rgb c);
 void dark();

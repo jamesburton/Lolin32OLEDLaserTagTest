@@ -12,6 +12,14 @@ uint16_t numLeds = 0;
 uint8_t rainbowHue = 0;
 uint8_t mw = 0, mh = 0;
 
+// External WS2812 output (carrier J8 / GP6, S3 carriers only): its own frame
+// buffer so it can render independently of the onboard matrix.
+CRGB *extLeds = nullptr;
+ExtRole extRole = ExtRole::Mirror;
+bool extDirty = true;      // repaint needed (role/team change)
+int extLastTeam = -1;
+uint32_t extLastFrameMs = 0;
+
 int8_t rPin = -1, gPin = -1, bPin = -1;
 bool commonAnode = false;
 uint8_t brightness = 13;
@@ -43,6 +51,16 @@ void rgbWrite(Board::Rgb c) {
 // Row-major pixel mapping: index = y*W + x. NOTE: if the panel is serpentine
 // this needs a per-row flip; verified empirically on hardware.
 uint16_t xy(int x, int y) { return (uint16_t)y * mw + x; }
+
+// Push both controllers, mirroring the onboard frame onto the external buffer
+// first when that's its role. Every onboard draw funnels through here so
+// Mirror stays in lockstep without its own frame loop.
+void showAll() {
+  if (extLeds != nullptr && extRole == ExtRole::Mirror) {
+    memcpy(extLeds, leds, numLeds * sizeof(CRGB));
+  }
+  FastLED.show();
+}
 } // namespace
 
 void begin(const Board::BoardProfile &p, TeamColourFn colours) {
@@ -58,6 +76,16 @@ void begin(const Board::BoardProfile &p, TeamColourFn colours) {
     } else {
       FastLED.addLeds<WS2812B, 14, GRB>(leds, numLeds);
     }
+#if defined(BOARD_S3_MATRIX)
+    // Carrier J8 external WS2812 out (GP6, rev1 netlist), on its OWN frame
+    // buffer so it renders independently of the onboard matrix (ExtRole) —
+    // harmless when nothing is fitted. Typical 8x8 WS2812B panels/strips are
+    // GRB (unlike the onboard matrix's RGB). S3-only: GPIO6 is a flash pin on
+    // the classic ESP32, where driving it would crash the board.
+    extLeds = new CRGB[numLeds];
+    fill_solid(extLeds, numLeds, CRGB::Black);
+    FastLED.addLeds<WS2812B, 6, GRB>(extLeds, numLeds);
+#endif
     FastLED.setMaxPowerInVoltsAndMilliamps(5, 500);
     FastLED.setBrightness(brightness);
     dark();
@@ -76,14 +104,14 @@ void setBrightness(uint8_t b) {
   brightness = b;
   if (kind == Board::HitDisplayKind::Ws2812Matrix) {
     FastLED.setBrightness(b);
-    FastLED.show();
+    showAll();
   }
 }
 
 void idle() {
   if (kind == Board::HitDisplayKind::Ws2812Matrix) {
     fill_rainbow(leds, numLeds, rainbowHue++, 4);
-    FastLED.show();
+    showAll();
   } else if (kind == Board::HitDisplayKind::RgbLed) {
     rgbWrite({0, 0, 0});
   }
@@ -113,15 +141,82 @@ void idleWithHealth(int hp, int maxHp) {
       blank--;
     }
   }
-  FastLED.show();
+  showAll();
 }
 
 void solid(Board::Rgb c) {
   if (kind == Board::HitDisplayKind::Ws2812Matrix) {
     fill_solid(leds, numLeds, toCrgb(c));
-    FastLED.show();
+    showAll();
   } else if (kind == Board::HitDisplayKind::RgbLed) {
     rgbWrite(c);
+  }
+}
+
+void ledTest() {
+  if (kind != Board::HitDisplayKind::Ws2812Matrix || numLeds < 4) {
+    return;
+  }
+  // Paint both buffers directly (bypassing role/mirror) so the diagnostic
+  // exercises each output regardless of configuration.
+  fill_solid(leds, numLeds, CRGB::Black);
+  leds[0] = CRGB(255, 0, 0);
+  leds[1] = CRGB(0, 255, 0);
+  leds[2] = CRGB(0, 0, 255);
+  leds[3] = CRGB(255, 255, 255);
+  if (extLeds != nullptr) {
+    memcpy(extLeds, leds, numLeds * sizeof(CRGB));
+    extDirty = true; // repaint the role content once the test is over
+  }
+  FastLED.show();
+}
+
+void setExtRole(ExtRole r) {
+  if (r != extRole) {
+    extRole = r;
+    extDirty = true;
+  }
+}
+
+void extTick(uint32_t nowMs, int team) {
+  if (kind != Board::HitDisplayKind::Ws2812Matrix || extLeds == nullptr) {
+    return;
+  }
+  if (team != extLastTeam) {
+    extLastTeam = team;
+    extDirty = true;
+  }
+  switch (extRole) {
+  case ExtRole::Mirror:
+    return; // painted by showAll() in lockstep with onboard frames
+  case ExtRole::Off:
+    if (extDirty) {
+      fill_solid(extLeds, numLeds, CRGB::Black);
+      extDirty = false;
+      FastLED.show();
+    }
+    return;
+  case ExtRole::Team:
+    if (extDirty) {
+      fill_solid(extLeds, numLeds, toCrgb(teamRgb(team)));
+      extDirty = false;
+      FastLED.show();
+    }
+    return;
+  case ExtRole::Pulse:
+    // Breathing team colour, ~12 breaths/min family; self-throttled frames.
+    if (nowMs - extLastFrameMs < 30) {
+      return;
+    }
+    extLastFrameMs = nowMs;
+    {
+      CRGB c = toCrgb(teamRgb(team));
+      c.nscale8_video(beatsin8(12, 24, 255));
+      fill_solid(extLeds, numLeds, c);
+      extDirty = false;
+      FastLED.show();
+    }
+    return;
   }
 }
 
@@ -143,7 +238,7 @@ void spinFrame(Board::Rgb c, uint8_t phase) {
     const uint8_t p = (uint8_t)((phase + i) % 28);
     leds[xy(px[p], py[p])] = toCrgb(c);
   }
-  FastLED.show();
+  showAll();
 }
 
 void scoreboard(const uint8_t grid[64], uint8_t num, uint8_t den) {
@@ -164,7 +259,7 @@ void scoreboard(const uint8_t grid[64], uint8_t num, uint8_t den) {
                             (uint8_t)((uint16_t)c.b * num / den));
     }
   }
-  FastLED.show();
+  showAll();
 }
 
 void dark() { solid({0, 0, 0}); }

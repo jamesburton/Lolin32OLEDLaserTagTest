@@ -48,7 +48,7 @@ namespace cp = ControlProto;
 // Firmware version reported on the wire (contract §1.3 fw=). BUMP THIS on
 // every behavioural firmware change — the host's fleet updater compares it
 // against the built image to decide who needs an OTA (fleet-ota spec).
-#define LT_FW_VERSION "2.4.3"
+#define LT_FW_VERSION "2.6.0"
 static const char *kFirmwareVersion = LT_FW_VERSION;
 
 // Embedded marker so the host can read a firmware.bin's version by scanning
@@ -189,6 +189,7 @@ bool saveConfig() {
   nvs.putInt("ownTeam", config.ownTeam);
   nvs.putString("protocolId", config.protocolId);
   nvs.putInt("brightness", config.brightness);
+  nvs.putInt("volume", config.volume);
   // enabledTeams as a compact CSV; teamColours as a CSV of "#RRGGBB".
   char teams[40] = "";
   for (size_t i = 0; i < config.enabledTeamsCount; i++) {
@@ -215,6 +216,7 @@ bool saveConfig() {
   nvs.putString("hostname", config.hostname);
   nvs.putString("chaseCol", config.chaseColour); // NVS keys are max 15 chars
   nvs.putString("startSfx", config.startupSfx);
+  nvs.putString("extRole", config.extRole);
   return true;
 }
 
@@ -236,6 +238,7 @@ void loadConfig() {
   strncpy(config.protocolId, proto.c_str(), sizeof(config.protocolId) - 1);
   config.protocolId[sizeof(config.protocolId) - 1] = '\0';
   config.brightness = nvs.getInt("brightness", 13);
+  config.volume = nvs.getInt("volume", 255);
 
   // enabledTeams: parse CSV, default to all four Vatos teams.
   String teams = nvs.getString("enabledTeams", "1,2,3,4");
@@ -288,6 +291,11 @@ void loadConfig() {
   String startSfx = nvs.getString("startSfx", "");
   strncpy(config.startupSfx, startSfx.c_str(), sizeof(config.startupSfx) - 1);
   config.startupSfx[sizeof(config.startupSfx) - 1] = '\0';
+
+  // External WS2812 output role; "mirror" = pre-2.6 behaviour.
+  String extRole = nvs.getString("extRole", "mirror");
+  strncpy(config.extRole, extRole.c_str(), sizeof(config.extRole) - 1);
+  config.extRole[sizeof(config.extRole) - 1] = '\0';
 }
 
 // --- LEDs -------------------------------------------------------------------
@@ -308,6 +316,20 @@ static int teamSfxIndex(int team) {
     if (config.teamIndex[i] == team) return config.teamSfx[i];
   }
   return config.teamSfx[0];
+}
+
+// Map the persisted extRole string onto HitDisplay's enum and apply it.
+static void applyExtRole() {
+  using HitDisplay::ExtRole;
+  ExtRole r = ExtRole::Mirror;
+  if (strcmp(config.extRole, "off") == 0) {
+    r = ExtRole::Off;
+  } else if (strcmp(config.extRole, "team") == 0) {
+    r = ExtRole::Team;
+  } else if (strcmp(config.extRole, "pulse") == 0) {
+    r = ExtRole::Pulse;
+  }
+  HitDisplay::setExtRole(r);
 }
 
 // --- Telemetry helpers ------------------------------------------------------
@@ -331,6 +353,27 @@ static int damageMultForTeam(int team) {
     }
   }
   return config.damageMultiplier;
+}
+
+// --- Self-hit suppression (TX blanking) --------------------------------------
+//
+// With no enclosure there can be direct line-of-sight from our own emitter to
+// our own receiver (and bench reflections do the same), so a board that fires
+// decodes its own shot ~50-100 ms later (frame gap + loop latency) and damages
+// itself. Every IR transmit goes through fireIr() so the TX end time is
+// stamped; the RX loop drops any frame decoded within the window and emits
+// `EVT selfhit` instead. Time-based, not team-based, so it also suppresses a
+// reflected shot fired on behalf of another team.
+constexpr uint32_t SelfHitBlankMs = 250;
+uint32_t lastIrTxEndMs = 0;
+bool irTxFired = false; // guards against a stale stamp aliasing after ~49.7 d
+
+// Transmit a shot and stamp the blanking window. The only sanctioned way to
+// call IrTx::fire from this firmware.
+void fireIr(const cp::TagEvent &ev) {
+  IrTx::fire(ev); // blocking bit-bang, so millis() here is the TX end
+  lastIrTxEndMs = millis();
+  irTxFired = true;
 }
 
 // Apply a decoded shot: take damage locally (authoritative), emit EVT hit, then
@@ -475,6 +518,26 @@ bool runCommand(const cp::CommandDoc &cmd) {
     identifyUntilMs = millis() + 1500;
     HitDisplay::solid({255, 255, 255});
     return true;
+  case cp::CommandKind::LedTest:
+    // Wiring/colour-order diagnostic. Rides the identify hold so the idle
+    // animation stays away long enough to eyeball the panel.
+    identifyUntilMs = millis() + 10000;
+    HitDisplay::ledTest();
+    return true;
+  case cp::CommandKind::PinSet:
+#if defined(BOARD_S3_MATRIX)
+    // Bench continuity check for the external WS2812 DATA path: park GP6 at a
+    // static level so a multimeter at J8.2 reads ~3.3 V (value=1) or 0 V
+    // (value=0) through R3. The identify hold keeps FastLED.show() away so
+    // the level stays static; pinMode unroutes the RMT channel, so REBOOT the
+    // board afterwards to restore external LED output.
+    identifyUntilMs = millis() + 15000;
+    pinMode(6, OUTPUT);
+    digitalWrite(6, cmd.value ? HIGH : LOW);
+    return true;
+#else
+    return false; // GPIO6 is a flash pin on the classic ESP32
+#endif
   case cp::CommandKind::Bright:
     config.brightness = constrain(cmd.value, 0, 255);
     HitDisplay::setBrightness(config.brightness);
@@ -501,7 +564,7 @@ bool runCommand(const cp::CommandDoc &cmd) {
         cmd.damage > 4) {
       return false;
     }
-    IrTx::fire(cp::tagEventFromVatosShot(cmd.team, cmd.damage));
+    fireIr(cp::tagEventFromVatosShot(cmd.team, cmd.damage));
     return true;
   case cp::CommandKind::Play:
     // Play a WAV straight off the card. Together with the /api/sd surface this
@@ -553,7 +616,7 @@ void onLine(const char *line) {
     if (sscanf(line + 5, "%d %d", &t, &d) == 2 && t >= 1 && t <= 4 && d >= 1 &&
         d <= 4) {
       if (IrTx::present()) {
-        IrTx::fire(cp::tagEventFromVatosShot(t, d));
+        fireIr(cp::tagEventFromVatosShot(t, d));
         Serial.printf("fired team=%d damage=%d\n", t, d);
       } else {
         Serial.println("fire: no IR transmitter on this board");
@@ -1030,6 +1093,8 @@ void handleConfig() {
       return;
     }
     HitDisplay::setBrightness(config.brightness);
+    Sound::setVolume(config.volume);
+    applyExtRole();
     char buf[512];
     cp::serializeConfig(config, buf, sizeof(buf));
     sendJson(200, buf);
@@ -1454,6 +1519,8 @@ void setup() {
   loadConfig();
   hp = config.startHp; // adopt the configured starting health
   HitDisplay::setBrightness(config.brightness);
+  Sound::setVolume(config.volume);
+  applyExtRole();
 
   esp_log_set_vprintf(udpLogVprintf); // enables `sdtest`'s remote log capture
   TagNet::onLine(onLine);             // CTL + legacy bright/hit/debug
@@ -1507,6 +1574,13 @@ void loop() {
     }
   }
 
+  // External WS2812 output rendering (Team/Pulse/Off roles; Mirror rides the
+  // onboard frames). Self-throttled; suspended during ledtest's identify hold
+  // so the diagnostic frame isn't repainted mid-look.
+  if (identifyUntilMs == 0) {
+    HitDisplay::extTick(now, config.ownTeam);
+  }
+
   // Switch the activity LED off once its pulse has elapsed
   if (ledOffAtMs != 0 && now >= ledOffAtMs) {
     digitalWrite(ACT_LED_PIN, LOW);
@@ -1550,6 +1624,18 @@ void loop() {
         }
       }
       TagNet::event(line.c_str());
+    }
+
+    // Self-hit suppression: a valid frame this soon after our own TX is our
+    // own emission arriving back (reflection, or direct emitter-to-receiver
+    // LoS on an unenclosed board). Report it, apply nothing.
+    if (ok && irTxFired &&
+        cp::txBlankActive(millis(), lastIrTxEndMs, SelfHitBlankMs)) {
+      char buf[96];
+      cp::formatSelfHitEvent(buf, sizeof(buf), shot.team, shot.damage,
+                             millis());
+      TagNet::event(buf);
+      ok = false;
     }
 
     // Dedicated scoreboard boards ignore IR entirely (spec §3.2).
