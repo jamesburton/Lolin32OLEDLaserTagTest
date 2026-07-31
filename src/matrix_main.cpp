@@ -48,7 +48,7 @@ namespace cp = ControlProto;
 // Firmware version reported on the wire (contract §1.3 fw=). BUMP THIS on
 // every behavioural firmware change — the host's fleet updater compares it
 // against the built image to decide who needs an OTA (fleet-ota spec).
-#define LT_FW_VERSION "2.4.1"
+#define LT_FW_VERSION "2.4.2"
 static const char *kFirmwareVersion = LT_FW_VERSION;
 
 // Embedded marker so the host can read a firmware.bin's version by scanning
@@ -663,13 +663,75 @@ void onLine(const char *line) {
       snprintf(msg, sizeof(msg),
                "SDPROBE order=%s mosi=%d miso=%d responded=%d r1=0x%02X "
                "cmd8=%02X%02X%02X%02X%02X v2=%d ready=%d cmd55=0x%02X acmd41=0x%02X "
-               "cmd58=0x%02X tries=%u",
+               "cmd58=0x%02X ocr=%02X%02X%02X%02X tries=%u",
                o.label, (int)o.mosi, (int)o.miso, p.responded ? 1 : 0, p.r1,
                p.cmd8[0], p.cmd8[1], p.cmd8[2], p.cmd8[3], p.cmd8[4],
                p.cmd8Ok ? 1 : 0, p.ready ? 1 : 0, p.cmd55, p.acmd41, p.cmd58,
+               p.ocr[0], p.ocr[1], p.ocr[2], p.ocr[3],
                (unsigned)p.acmd41Tries);
       TagNet::event(msg);
       delay(50);
+    }
+  } else if (strcmp(line, "sdquiet") == 0) {
+    // Radio-silent probe. With the matrix already blanked (as in `sdprobe`),
+    // the WiFi radio's TX bursts are the largest remaining load on the
+    // module's shared 3V3 regulator — and they have been present for every
+    // probe so far, because probes are commanded over WiFi. This stops the
+    // radio entirely, probes, then reconnects and re-emits the cached results,
+    // separating "the card cannot init on this rail at all" from "the card
+    // fails only under WiFi load". The HTTP caller's connection dies when the
+    // radio drops — that is expected; results arrive over UDP afterwards.
+    static char quiet[4][176]; // static: cached across the radio-off window
+    HitDisplay::dark();
+    delay(50);
+    TagNet::event("SDQUIET radio off; results follow after reconnect");
+    delay(100); // let that datagram leave before the radio dies
+    WiFi.mode(WIFI_OFF);
+    delay(250); // radio fully quiesced before the card draws init current
+    const struct {
+      const char *label;
+      uint32_t hz;
+    } runs[] = {
+        {"quiet-400k", 400000},
+        {"quiet-400k-b", 400000}, // immediate repeat: repeatability check
+        {"quiet-200k", 200000},
+        {"quiet-100k", 100000},
+    };
+    for (size_t i = 0; i < 4; i++) {
+      Storage::SdProbe p = Storage::sdProbeRaw(
+          activeProfile.sdCsPin, activeProfile.sdMosiPin,
+          activeProfile.sdMisoPin, activeProfile.sdSckPin, runs[i].hz);
+      snprintf(quiet[i], sizeof(quiet[i]),
+               "SDQUIET order=%s responded=%d r1=0x%02X "
+               "cmd8=%02X%02X%02X%02X%02X v2=%d ready=%d cmd55=0x%02X "
+               "acmd41=0x%02X cmd58=0x%02X ocr=%02X%02X%02X%02X tries=%u",
+               runs[i].label, p.responded ? 1 : 0, p.r1, p.cmd8[0], p.cmd8[1],
+               p.cmd8[2], p.cmd8[3], p.cmd8[4], p.cmd8Ok ? 1 : 0,
+               p.ready ? 1 : 0, p.cmd55, p.acmd41, p.cmd58, p.ocr[0], p.ocr[1],
+               p.ocr[2], p.ocr[3], (unsigned)p.acmd41Tries);
+      delay(50);
+    }
+    // Reconnect with the stored credentials and re-emit the cached lines.
+    // TagNet owns the "tagnet" namespace; read-only access here is safe.
+    Preferences wifiPrefs;
+    wifiPrefs.begin("tagnet", true);
+    const String ssid = wifiPrefs.getString("ssid", "");
+    const String pass = wifiPrefs.getString("pass", "");
+    wifiPrefs.end();
+    WiFi.mode(WIFI_STA);
+    if (!ssid.isEmpty()) {
+      WiFi.begin(ssid.c_str(), pass.c_str());
+    }
+    const uint32_t reconnectStart = millis();
+    while (WiFi.status() != WL_CONNECTED &&
+           millis() - reconnectStart < 30000) {
+      delay(100);
+    }
+    delay(500); // let DHCP/ARP settle before the first datagram
+    for (size_t i = 0; i < 4; i++) {
+      TagNet::event(quiet[i]);
+      Serial.println(quiet[i]);
+      delay(100); // spread the datagrams; UDP after reconnect is fragile
     }
   } else if (strcmp(line, "sdpins") == 0) {
     // Electrical presence test, no card protocol involved.

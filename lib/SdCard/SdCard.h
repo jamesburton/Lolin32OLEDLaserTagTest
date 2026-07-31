@@ -29,6 +29,9 @@ struct SdProbe {
   uint8_t acmd41;   ///< Last ACMD41 reply: 0x01 = still idle, 0x05 = illegal, 0xFF = silent.
   uint8_t cmd55;    ///< Last CMD55 reply. Distinguishes "died after CMD8" from "ACMD41 itself refused".
   uint8_t cmd58;    ///< CMD58 (READ_OCR) reply — a cheap command re-tried after ACMD41.
+  uint8_t ocr[4];   ///< OCR register from CMD58 (big-endian). Bit 31 = power-up
+                    ///< complete, bit 30 = CCS, bits 15-23 = voltage window the
+                    ///< card accepts — the card's OWN report of supply health.
   uint16_t acmd41Tries; ///< How many ACMD41 polls were made.
 };
 

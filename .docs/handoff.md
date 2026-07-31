@@ -8,6 +8,47 @@ Codes & features behind interfaces so other guns/protocols and boards plug in.
 
 ## Current State
 
+### ✅ microSD RESOLVED (2026-07-31) — a SOLDER JOINT, not the supply; card mounts at 4 MHz
+The month-long "card browns out during init" saga is closed. **Root cause: a
+high-resistance solder joint on the SD_VDD path — the J5 socket's 3V3 pin
+(pin 1) on board `e45614`** (a thin JP3 bridge would present identically).
+Microamp SPI traffic passed the joint (CMD0/CMD8 always answered), but the
+~100 mA init surge dropped the rail across it, so ACMD41 either died
+(brownout, `0xFF`) or sat "busy" forever. One reflow → `ready=1` in 3 polls
+at 400/200/100 kHz, `SDTEST result=MOUNTED hz=4000000`, 64 GB card.
+- **Everything else was eliminated by experiment, in order:** bulk capacitance
+  (470-1000 µF across SD 3V3/GND stopped the outright deaths but init still
+  never completed — transient vs sustained starvation); WiFi radio load (new
+  `sdquiet` verb probes with `WIFI_OFF`; card still failed → not load
+  competition); both cards (each works elsewhere; each failed here in its own
+  way — 64 GB busy-forever, 2 GB silent-after-CMD8); 5 V input source; clock
+  speed; module type (plain 3.3 V adapter, no LDO/level-shifter — do NOT feed
+  it 5 V).
+- **The instrument that settled it: CMD58's OCR payload** (now captured by
+  `sdprobe`, was previously discarded). Bit 31 = the card's own "power-up
+  complete" flag; bits 15-23 its accepted voltage window. A card stuck busy
+  with the window normal (`ocr=00FF8000`) says "supply can't finish my init"
+  directly; after the reflow it reads `C0FF8000` (powered up + SDHC/SDXC).
+- **U5/D9 vindication NOT needed:** rev1 has NO U5 footprint (BOM/layout
+  confirmed — the earlier handoff overstated it), but none is required; the
+  module's onboard regulator feeds SD init fine through a good joint.
+- **Firmware 2.4.2** (board `e45614` only; rest of fleet on 2.4.1): `sdprobe`
+  reports OCR; new `sdquiet` (radio-silent probe, results cached and re-emitted
+  over UDP after reconnect); ACMD41 deadline back at the spec-legal 2 s.
+  Native tests 65/65. Build guide's microSD section rewritten with both
+  failure signatures (unpowered vs high-resistance joint).
+- **Unblocked:** the microSD spike's hardware verification (Next Steps #1) —
+  next actions are putting `/sfx/test.wav` on the card and `sdplay`, then the
+  configurable sound-path work (8b).
+- ⚠ **New bench gotcha:** this board twice WEDGED after an OTA soft-reboot
+  (WiFi associates — pings OK — but port 80 refused, no heartbeats; only a
+  power-cycle recovers). Never seen on fleet OTAs; possibly bench-wiring
+  related. If a board vanishes after `/api/update`, power-cycle before
+  diagnosing further. Also: one OTA upload died mid-transfer with curl exit
+  28 and the board kept running the OLD image while still answering
+  `OK: <verb>` for verbs it doesn't have — `/cmd` replies OK to ANY string,
+  so verify a flash took by behaviour (or version), never by the OK.
+
 ### 🔊 SOUND FIXED — every clip had been playing an OCTAVE HIGH; fw 2.4.1 fleet-wide (2026-07-30)
 Commit `d7dd783`. Found because the quack "sounded like a loop synth effect,
 far too high pitch" — the user's ears caught a bug that had been latent since
@@ -585,9 +626,16 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
   a device reboot mid-match revives it (hp volatile) — accepted for now.
 
 ## Gotchas (carry forward — these cost real time)
-- **microSD status (2026-07-30): JP3 was a real fault and is fixed; the card
-  now talks but BROWNS OUT during initialisation.** Best current diagnosis, and
-  it points at a designed-in option we left unpopulated.
+- **✅ RESOLVED 2026-07-31 — the microSD brownout was a high-resistance solder
+  joint on J5 pin 1 (socket 3V3), not the regulator.** See Current State. The
+  diagnosis below is kept because its ELIMINATION list and signatures remain
+  correct and the "supply sag" reading was reasonable — it was sag, just across
+  a joint, not inside the regulator. Rev1 needs no U5; solder every SD_VDD
+  joint generously.
+- **microSD history (2026-07-30): JP3 was a real fault and is fixed; the card
+  then talked but BROWNED OUT during initialisation.** (Superseded diagnosis —
+  see the resolved entry above; it points at a designed-in option we left
+  unpopulated.)
   - Bridging **JP3** took the card from electrically dead (cs/miso/sck
     FLOATING) to alive: CMD0 -> `0x01`, CMD8 -> `01000001AA` (valid SDv2), on
     the documented pin order.
@@ -724,6 +772,21 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
 - WiFi 2.4GHz `CommunityFibre10Gb_28750`; creds in NVS (survive OTA). Set via
   `tools/set-wifi.ps1 -Port COMx -Ssid ... -Password ...`.
 
+## Recent Changes (2026-07-31 — microSD root-cause session)
+- `lib/SdCard/SdCard.h/.cpp` — `SdProbe` gains `ocr[4]` (CMD58 payload captured
+  instead of discarded; bit 31 = power-up complete, bits 15-23 = voltage
+  window); ACMD41 deadline stays 2 s (a temporary 10 s diagnostic window was
+  used mid-session and reverted).
+- `src/matrix_main.cpp` — `sdprobe` reports `ocr=`; new **`sdquiet`** verb
+  (matrix dark + `WIFI_OFF` probe, 4 runs, results cached in RAM and re-emitted
+  over UDP after reconnecting with the stored "tagnet" creds);
+  `LT_FW_VERSION` → **2.4.2**.
+- `instructions/BUILD_LASERTAG_CARRIER_ESP32_MATRIX.md` — microSD section:
+  solder SD_VDD joints generously; second warning block for the
+  high-resistance-joint signature (CMD0/CMD8 ok, never ready).
+- Board `e45614` flashed 2.4.2 over HTTP; card verified `ready=1` + MOUNTED.
+  Fleet remains 2.4.1 (no behaviour change for boards without SD hardware).
+
 ## Recent Changes (2026-07-30 — committed and pushed, tree clean)
 - `d7dd783` **fix(sound): mono clips played an octave high.**
   - `lib/Sound/Sound.cpp` — `channel_format` `ALL_LEFT` → `RIGHT_LEFT`; new
@@ -776,23 +839,16 @@ fit-or-omit at build. **Lay out U5 with a bypass link** (0Ω / solder-jumper) so
 
 ## Next Steps
 
-### ⏸ BLOCKED ON THE USER'S BENCH — microSD brownout test (carried over)
-This is the one open thread with a concrete next action, and **it needs the
-user at the hardware; do not start it or anything else in the backlog without
-asking.** Board `e45614` (192.168.1.218) runs the diagnostic firmware.
-- **Test A (5 minutes, parts on hand):** piggyback a **470 µF or 1000 µF /
-  10 V electrolytic in parallel with C5**, stripe/negative to the GND side.
-- **Test B:** **open JP3** and feed **J5 pin 1** (SD_VDD, square pad) from an
-  independent 3.3 V regulator fed off **J1 pin 1 (5 V)**, GND to J1 pin 2.
-  ⚠ **If Test B is abandoned, JP3 MUST be re-bridged or the card loses power.**
-- Then run `curl -s "http://192.168.1.218/cmd?c=sdprobe"` while capturing UDP
-  with `dotnet run --project tools/TagMonitor`. **Baseline to beat:** CMD55,
-  ACMD41 and CMD58 all answer `0x01` ("still initialising" — the healthy
-  in-progress reply) and the card then stops responding partway through,
-  ending `0xFF` after ~667 polls. **Success = `ready=1`.**
-- The user may also try a spare copy of the same breakout module. They have
-  ruled out SMD work and hard-to-source bare push-push sockets.
-- **Not blocking anything else** — sound ships from flash today.
+### ✅ RESOLVED 2026-07-31 — microSD brownout was a solder joint (see Current State)
+Both bench tests ran and did their job: the bulk cap (Test A) changed the
+failure mode (deaths → busy-forever), external supply (Test B) was defeated by
+breadboard wiring twice, and the decisive evidence came from capturing the
+card's OCR register + a radio-silent probe (`sdquiet`). Reflowing the J5
+pin-1 socket joint fixed it outright: `ready=1`, mounts at 4 MHz.
+**Follow-ups now unblocked:** put `/sfx/test.wav` on the card (`python
+tools/gen_sfx.py --wav`), run `sdplay` end-to-end, then 8b (configurable
+sound paths / SD-vs-flash clip sources). Consider reflowing the same joints
+on the OTHER PCB carriers before their first SD use.
 
 **RF is closed** — these guns are IR-only as far as this project is concerned;
 see the RF section above before reopening it.

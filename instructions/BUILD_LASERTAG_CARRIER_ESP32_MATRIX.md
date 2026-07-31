@@ -136,7 +136,7 @@ firmware, the card's only current role is holding sound clips
 | Order | Ref | Part | Notes |
 |---|---|---|---|
 | 1 | C4 | 100 nF ceramic disc | SD_VDD decoupling at the socket. |
-| 2 | JP3 | Solder jumper, 2-pad | ⚠ **MUST BE SOLDER-BRIDGED — this is the card's ONLY power path.** The footprint is the *Open* variant, so it arrives unbridged and `SD_VDD` is disconnected until you close it. Bridge the two pads to source `SD_VDD` from onboard VCC3V3. |
+| 2 | JP3 | Solder jumper, 2-pad | ⚠ **MUST BE SOLDER-BRIDGED — this is the card's ONLY power path — and the bridge must be a FAT, generous joint.** The footprint is the *Open* variant, so it arrives unbridged and `SD_VDD` is disconnected until you close it. Bridge the two pads to source `SD_VDD` from onboard VCC3V3. A thin/dry joint here — or on **J5 pin 1**, the socket's 3V3 pin — passes the card's microamp SPI traffic (CMD0/CMD8 answer normally) but drops the rail under the ~100 mA init surge, so the card browns out mid-`ACMD41` or sits "initialising" forever — a fault that looks like a bad card or a weak regulator and survives every wiring check. Solder every SD_VDD joint generously, shiny and domed. |
 | 3 | J5 | 1×6 pin socket | microSD breakout module. **3V3 pin → J5's square end** (pin 1). Pin order 3V3·CS·MOSI·CLK·MISO·GND. |
 | 4 | C5 | 10 µF/10 V electrolytic | Bulk reservoir for card init inrush. Electrolytic polarity: stripe = negative. |
 
@@ -146,6 +146,17 @@ firmware, the card's only current role is holding sound clips
 > speed, on any card, in any pin ordering. The board's 3V3 rail still measures
 > correctly — `SD_VDD` is downstream of JP3, so probe **J5 pin 1** (the square
 > pad), not the rail. Diagnose remotely with the `sdpins` command.
+>
+> ⚠ **If the card answers CMD0/CMD8 but never becomes ready, REFLOW the
+> SD_VDD supply joints: J5 pin 1 (the socket's 3V3 pin) and the JP3 bridge.**
+> A high-resistance (thin/dry) joint anywhere in that path produces exactly
+> this halfway state: SPI commands work (microamps), but init current
+> (~100 mA) collapses the rail so `ACMD41` either goes silent (brownout) or
+> answers "busy" forever — `sdprobe` shows `responded=1 v2=1 ready=0`, with
+> the OCR power-up bit (bit 31) never set. On board `e45614` the culprit was
+> the **J5 pin-1 socket joint** (2026-07-31); a thin JP3 bridge shows the
+> same symptom. This cost hours of diagnosis against cards, capacitors, WiFi
+> load and external supplies before one reflow fixed it.
 
 **Verify on board:** the design docs describe an *optional* dedicated 3.3 V
 LDO (U5) for the SD rail, with JP3 selecting between onboard VCC3V3 and the

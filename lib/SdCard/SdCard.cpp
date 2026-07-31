@@ -195,8 +195,12 @@ SdProbe sdProbeRaw(int8_t csPin, int8_t mosiPin, int8_t misoPin, int8_t sckPin,
   // initialise — which is a very different fault from having browned out.
   if (out.responded) {
     out.cmd58 = sdCommand(58, 0, 0xFD);
+    // Capture the OCR payload rather than discarding it: bit 31 is the card's
+    // own "power-up complete" flag and bits 15-23 its accepted voltage window,
+    // so a card that polls forever in idle tells us here WHY — still busy
+    // powering up (supply) vs powered up but refusing (card).
     for (int i = 0; i < 4; i++) {
-      SPI.transfer(0xFF); // discard the 4 OCR bytes
+      out.ocr[i] = SPI.transfer(0xFF);
     }
   }
 
