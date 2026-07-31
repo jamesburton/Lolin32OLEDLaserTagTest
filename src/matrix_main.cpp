@@ -48,7 +48,7 @@ namespace cp = ControlProto;
 // Firmware version reported on the wire (contract §1.3 fw=). BUMP THIS on
 // every behavioural firmware change — the host's fleet updater compares it
 // against the built image to decide who needs an OTA (fleet-ota spec).
-#define LT_FW_VERSION "2.4.2"
+#define LT_FW_VERSION "2.4.3"
 static const char *kFirmwareVersion = LT_FW_VERSION;
 
 // Embedded marker so the host can read a firmware.bin's version by scanning
@@ -827,17 +827,85 @@ void onLine(const char *line) {
       uint8_t *buf = Storage::sdReadFile("/sfx/test.wav", fileLen);
       if (buf == nullptr) {
         Serial.println("[sd] sdplay: could not read /sfx/test.wav");
+        TagNet::event("SDPLAY error=read-failed path=/sfx/test.wav");
       } else {
         Storage::WavView view;
         const char *err = nullptr;
         if (!Storage::parseWav(buf, fileLen, view, err)) {
           Serial.printf("[sd] sdplay: WAV rejected (%s)\n", err);
+          char msg[96];
+          snprintf(msg, sizeof(msg), "SDPLAY error=wav-rejected reason=%s", err);
+          TagNet::event(msg);
         } else {
           Serial.printf("[sd] sdplay: playing %u samples @ %uHz\n",
                         (unsigned)view.sampleCount, (unsigned)view.sampleRate);
+          char msg[96];
+          snprintf(msg, sizeof(msg), "SDPLAY playing samples=%u rate=%u",
+                   (unsigned)view.sampleCount, (unsigned)view.sampleRate);
+          TagNet::event(msg); // headless boards: mirror the outcome over UDP
           Sound::playRaw(view.pcm, view.sampleCount);
         }
         free(buf);
+      }
+    }
+  } else if (strncmp(line, "sdcopy ", 7) == 0) {
+    // Copy a file from flash (LittleFS) to the same path on the SD card,
+    // creating the parent directory. This completes the network route for
+    // card content: POST /api/files/file uploads to flash, `sdcopy <path>`
+    // moves it onto the card — no card-reader round trip. Outcome goes over
+    // UDP because these boards run headless.
+    const char *path = line + 7;
+    const Board::BoardProfile &prof = activeProfile;
+    char msg[128];
+    if (!Storage::isSafeSdPath(path)) {
+      TagNet::event("SDCOPY error=bad-path");
+    } else if (!prof.hasSdCard()) {
+      TagNet::event("SDCOPY error=no-sd-on-board");
+    } else if (!Storage::sdBegin(prof.sdCsPin, prof.sdMosiPin, prof.sdMisoPin,
+                                 prof.sdSckPin)) {
+      TagNet::event("SDCOPY error=mount-failed");
+    } else if (!Storage::fsBegin()) {
+      TagNet::event("SDCOPY error=fs-mount-failed");
+    } else {
+      size_t total = 0;
+      if (!Storage::fsOpenRead(path, total)) {
+        snprintf(msg, sizeof(msg), "SDCOPY error=not-in-flash path=%s", path);
+        TagNet::event(msg);
+      } else {
+        // Ensure the parent directory exists ("/sfx/x.wav" -> "/sfx").
+        const char *slash = strrchr(path, '/');
+        if (slash != nullptr && slash != path) {
+          char dir[64];
+          const size_t n = (size_t)(slash - path);
+          if (n < sizeof(dir)) {
+            memcpy(dir, path, n);
+            dir[n] = '\0';
+            Storage::sdMakeDir(dir);
+          }
+        }
+        bool ok = Storage::sdWriteOpen(path);
+        uint8_t chunk[512];
+        size_t copied = 0;
+        while (ok && copied < total) {
+          const size_t got = Storage::fsRead(chunk, sizeof(chunk));
+          if (got == 0) {
+            break; // short read: flash file ended early — ok stays true,
+                   // the copied-vs-total check below fails the copy
+          }
+          ok = Storage::sdWriteChunk(chunk, got);
+          copied += got;
+        }
+        Storage::fsCloseRead();
+        uint32_t wrote = 0;
+        if (ok) {
+          wrote = Storage::sdWriteClose();
+        } else {
+          Storage::sdWriteAbort();
+        }
+        snprintf(msg, sizeof(msg), "SDCOPY path=%s flash=%u card=%u ok=%d",
+                 path, (unsigned)total, (unsigned)wrote,
+                 (ok && wrote == total) ? 1 : 0);
+        TagNet::event(msg);
       }
     }
   }

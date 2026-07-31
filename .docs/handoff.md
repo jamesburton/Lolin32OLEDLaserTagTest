@@ -32,14 +32,20 @@ at 400/200/100 kHz, `SDTEST result=MOUNTED hz=4000000`, 64 GB card.
 - **U5/D9 vindication NOT needed:** rev1 has NO U5 footprint (BOM/layout
   confirmed — the earlier handoff overstated it), but none is required; the
   module's onboard regulator feeds SD init fine through a good joint.
-- **Firmware 2.4.2** (board `e45614` only; rest of fleet on 2.4.1): `sdprobe`
+- **Firmware 2.4.3** (board `e45614` only; rest of fleet on 2.4.1): `sdprobe`
   reports OCR; new `sdquiet` (radio-silent probe, results cached and re-emitted
-  over UDP after reconnect); ACMD41 deadline back at the spec-legal 2 s.
+  over UDP after reconnect); new `sdcopy <path>` (flash→SD); `sdplay` outcomes
+  mirrored over UDP; ACMD41 deadline back at the spec-legal 2 s.
   Native tests 65/65. Build guide's microSD section rewritten with both
   failure signatures (unpowered vs high-resistance joint).
-- **Unblocked:** the microSD spike's hardware verification (Next Steps #1) —
-  next actions are putting `/sfx/test.wav` on the card and `sdplay`, then the
-  configurable sound-path work (8b).
+- **✅ SPIKE VERIFIED END-TO-END (same day, fw 2.4.3):** clip generated
+  (`gen_sfx.py --wav`), uploaded to flash over HTTP, copied to the card with
+  the new **`sdcopy <path>`** verb (flash→SD, creates parent dirs, UDP
+  outcome event), mounted, parsed and PLAYED from the card —
+  `SDPLAY playing samples=36160 rate=16000`, confirmed audible. The card was
+  populated entirely over WiFi; no card reader involved. `sdplay` outcomes
+  now also mirror over UDP (headless boards). Next: configurable sound-path
+  work (8b) — clips can now live on SD or flash.
 - ⚠ **New bench gotcha:** this board twice WEDGED after an OTA soft-reboot
   (WiFi associates — pings OK — but port 80 refused, no heartbeats; only a
   power-cycle recovers). Never seen on fleet OTAs; possibly bench-wiring
