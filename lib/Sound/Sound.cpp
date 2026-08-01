@@ -41,6 +41,26 @@ static float                sGain    = kVolume;
 static constexpr int        kHitMs   = 180;
 static constexpr int        kHitSamps = (int)(kRate * kHitMs / 1000); // 2880
 
+// --- Playback task state ----------------------------------------------------
+// One dedicated task, pinned to core 0, owns every I2S write. The Arduino
+// loop (core 1) only ever ENQUEUES work, so a 10 s clip no longer freezes the
+// HTTP server, IR decode or game logic for its duration.
+struct PlayRequest {
+  enum class Kind : uint8_t { Bank, File };
+  Kind kind = Kind::Bank;
+  int  idx  = 0;      // Bank: SFX bank entry
+  char path[96] = ""; // File: clip path, matches ControlProto's path sizes
+};
+
+static TaskHandle_t      sPlayTask  = nullptr;
+static QueueHandle_t     sPlayQueue = nullptr;
+// Serialises playback jobs against the synchronous bench path (playRaw), so
+// two writers can never interleave frames into the same I2S DMA queue.
+static SemaphoreHandle_t sPlayLock  = nullptr;
+static volatile bool     sPlaying   = false; // task is inside a job
+static volatile bool     sAbort     = false; // current clip should stop
+static FileStreamFn      sFileStreamer = nullptr;
+
 // BSS-allocated — never on the stack.
 static int16_t sBuf[kHitSamps];
 
@@ -70,6 +90,10 @@ static void writeMono(const int16_t *data, size_t samples) {
   static int16_t frames[512]; // 256 mono samples -> 256 L/R pairs
   size_t i = 0;
   while (i < samples) {
+    // Abort poll, between chunks only: a new game cue (hit/death siren) must
+    // pre-empt a long clip within ~16 ms, never mid-DMA-write. When the flag
+    // is clear this changes nothing — the sample math below is untouched.
+    if (sAbort) break;
     const size_t n = samples - i < 256 ? samples - i : 256;
     for (size_t j = 0; j < n; j++) {
       const int16_t s = (int16_t)((float)data[i + j] * sGain);
@@ -90,8 +114,9 @@ static void writeMono(const int16_t *data, size_t samples) {
 }
 
 // Play one full-scale PCM clip at kVolume. Scales in small chunks (bounded RAM,
-// any length) and feeds the DMA. Blocks for the clip duration while it drains;
-// hits are followed by a Flash state that masks the delay, so this is fine for v1.
+// any length) and feeds the DMA. Blocks its caller for the clip duration while
+// it drains — which is fine, because callers are the playback task (core 0)
+// and the bench-only playRaw path; the Arduino loop never calls this.
 static void playPcm(const int16_t *data, size_t samples) {
   // Start the peripheral only for the clip. Left running, the I2S clock cycles
   // stale DMA buffers continuously and the amp plays it as a constant noise;
@@ -103,6 +128,57 @@ static void playPcm(const int16_t *data, size_t samples) {
   delay(20);
   i2s_zero_dma_buffer(kPort);
   i2s_stop(kPort);
+}
+
+// Play one validated bank entry. Runs on the playback task only.
+static void playBankSync(int idx) {
+#if defined(HAVE_SFX_BANK)
+  const SfxSample &s = kSfxBank[idx];
+  playPcm(s.data, s.len);
+  sfxLast = (uint8_t)idx;
+  sfxLastNm = s.name;
+  sfxPlayCount++;
+  Serial.printf("[sfx] play idx=%d/%u name=%s\n", idx, (unsigned)kSfxBankCount,
+                s.name);
+#else
+  // No embedded bank on this board: fall back to the procedural burst.
+  (void)idx;
+  synthRender();
+  playPcm(sBuf, kHitSamps);
+  sfxLast = 0;
+  sfxLastNm = "synth-burst";
+  sfxPlayCount++;
+#endif
+}
+
+// The playback task: drains the request queue forever, one clip at a time.
+// Pinned to core 0 so streaming never contends with the Arduino loop (core 1).
+// Stack is generous (8 KB) because the file streamer runs HERE — flash reads
+// and WAV parsing included — not on the loop task.
+static void playTask(void *) {
+  PlayRequest req;
+  for (;;) {
+    if (xQueueReceive(sPlayQueue, &req, portMAX_DELAY) != pdTRUE) continue;
+    sPlaying = true;
+    sAbort = false;
+    // Take the lock BEFORE subscribing to the WDT: blocked on the mutex (e.g.
+    // while a bench playRaw holds it for a long clip) a subscribed task could
+    // not reset and would trip the watchdog.
+    xSemaphoreTake(sPlayLock, portMAX_DELAY);
+    // Subscribe to the task WDT only for the job's duration, so writeMono's
+    // esp_task_wdt_reset keeps feeding it exactly as it did from the loop
+    // task. Idle (blocked on the queue) the task must NOT be subscribed —
+    // it could never reset and the watchdog would reboot the board.
+    esp_task_wdt_add(nullptr);
+    if (req.kind == PlayRequest::Kind::Bank) {
+      playBankSync(req.idx);
+    } else if (sFileStreamer != nullptr) {
+      sFileStreamer(req.path);
+    }
+    esp_task_wdt_delete(nullptr);
+    xSemaphoreGive(sPlayLock);
+    sPlaying = false;
+  }
 }
 
 #endif
@@ -151,12 +227,27 @@ void begin(const Board::BoardProfile &p) {
     // the amp produces nothing at idle (see playHit).
     i2s_zero_dma_buffer(kPort);
     i2s_stop(kPort);
+
+    // Playback task, created once here so it already exists for the startup
+    // clip (which plays before WiFi is up). Depth-4 queue: one playing clip
+    // plus a short burst of game cues; playIndex drops the oldest pending on
+    // overflow so the newest feedback always lands.
+    if (sPlayTask == nullptr) {
+      sPlayQueue = xQueueCreate(4, sizeof(PlayRequest));
+      sPlayLock  = xSemaphoreCreateMutex();
+      xTaskCreatePinnedToCore(playTask, "sndplay", 8192, nullptr, 1, &sPlayTask,
+                              0);
+    }
   }
 #endif
 }
 
 void setVolume(uint8_t v) {
 #if defined(ESP32)
+  // Called from core 1 (REST PATCH) while the playback task reads sGain on
+  // core 0. Benign without a lock: sGain is an aligned 32-bit float, and on
+  // the ESP32/Xtensa a 32-bit aligned store is atomic — a concurrent reader
+  // sees either the old or the new gain, never a torn value.
   sGain = kVolume * ((float)v / 255.0f);
 #else
   (void)v;
@@ -194,29 +285,29 @@ void cue(Cue c) {
 }
 
 void playIndex(int idx) {
+#if defined(ESP32)
+  if (kind != Board::AudioKind::I2sDac || sPlayQueue == nullptr) return;
 #if defined(HAVE_SFX_BANK)
-  if (kind != Board::AudioKind::I2sDac) return;
   if (idx < 0 || idx >= (int)kSfxBankCount) {
     Serial.printf("[sfx] REJECT idx=%d (bank size %u)\n", idx,
                   (unsigned)kSfxBankCount);
     return;
   }
-  const SfxSample &s = kSfxBank[idx];
-  playPcm(s.data, s.len);
-  sfxLast = (uint8_t)idx;
-  sfxLastNm = s.name;
-  sfxPlayCount++;
-  Serial.printf("[sfx] play idx=%d/%u name=%s\n", idx, (unsigned)kSfxBankCount,
-                s.name);
-#elif defined(ESP32)
-  // No embedded bank on this board: fall back to the procedural burst.
-  if (kind != Board::AudioKind::I2sDac) return;
-  (void)idx;
-  synthRender();
-  playPcm(sBuf, kHitSamps);
-  sfxLast = 0;
-  sfxLastNm = "synth-burst";
-  sfxPlayCount++;
+#endif
+  // Game cues pre-empt: abort whatever is playing (a long file clip must not
+  // delay a hit/death siren) and queue the cue. The task clears the flag when
+  // it starts the next job.
+  PlayRequest req;
+  req.kind = PlayRequest::Kind::Bank;
+  req.idx = idx;
+  if (busy()) sAbort = true;
+  if (xQueueSend(sPlayQueue, &req, 0) != pdTRUE) {
+    // Queue full under a cue burst: drop the oldest pending request so the
+    // NEWEST game feedback is the one that plays. Never block the game loop.
+    PlayRequest dropped;
+    xQueueReceive(sPlayQueue, &dropped, 0);
+    xQueueSend(sPlayQueue, &req, 0);
+  }
 #else
   (void)idx;
 #endif
@@ -226,10 +317,69 @@ void playRaw(const int16_t *data, size_t samples) {
 #if defined(ESP32)
   if (kind != Board::AudioKind::I2sDac) return;
   if (data == nullptr || samples == 0) return;
-  playPcm(data, samples);
+  // Deliberately SYNCHRONOUS: the only caller (the `sdplay` bench verb) frees
+  // its buffer as soon as this returns, so the data cannot ride the async
+  // queue. Pre-empt whatever is playing, then hold the play lock so the task
+  // cannot start a queued cue while we write frames from this core.
+  if (sPlayLock != nullptr) {
+    sAbort = true;
+    xSemaphoreTake(sPlayLock, portMAX_DELAY);
+    sAbort = false; // don't abort our own clip; a NEW cue may still set it
+    playPcm(data, samples);
+    xSemaphoreGive(sPlayLock);
+  } else {
+    playPcm(data, samples);
+  }
 #else
   (void)data;
   (void)samples;
+#endif
+}
+
+void setFileStreamer(FileStreamFn fn) {
+#if defined(ESP32)
+  sFileStreamer = fn;
+#else
+  (void)fn;
+#endif
+}
+
+bool playFileAsync(const char *path) {
+#if defined(ESP32)
+  if (kind != Board::AudioKind::I2sDac || sPlayQueue == nullptr ||
+      sFileStreamer == nullptr) {
+    return false;
+  }
+  PlayRequest req;
+  req.kind = PlayRequest::Kind::File;
+  if (path == nullptr || strlen(path) >= sizeof(req.path)) return false;
+  // One clip at a time: a file play while busy is rejected rather than
+  // queued, so the REST caller gets an immediate, truthful "busy" outcome
+  // (game cues, by contrast, pre-empt — see playIndex).
+  if (busy()) return false;
+  strncpy(req.path, path, sizeof(req.path) - 1);
+  req.path[sizeof(req.path) - 1] = '\0';
+  return xQueueSend(sPlayQueue, &req, 0) == pdTRUE;
+#else
+  (void)path;
+  return false;
+#endif
+}
+
+bool busy() {
+#if defined(ESP32)
+  return sPlaying ||
+         (sPlayQueue != nullptr && uxQueueMessagesWaiting(sPlayQueue) > 0);
+#else
+  return false;
+#endif
+}
+
+bool abortRequested() {
+#if defined(ESP32)
+  return sAbort;
+#else
+  return false;
 #endif
 }
 

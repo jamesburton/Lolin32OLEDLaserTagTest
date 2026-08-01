@@ -155,6 +155,46 @@ void fsCloseRead() {
   }
 }
 
+// Clip playback channel: same shape as the primary read channel above but on
+// its own handle, so the playback task and the REST surface never fight over
+// one File (see FlashFs.h).
+namespace {
+File clipFile;
+}
+
+bool clipOpenRead(const char *path, size_t &size) {
+  size = 0;
+  if (!mounted) {
+    return false;
+  }
+  if (clipFile) {
+    clipFile.close();
+  }
+  clipFile = LittleFS.open(path, FILE_READ);
+  if (!clipFile || clipFile.isDirectory()) {
+    return false;
+  }
+  size = clipFile.size();
+  return true;
+}
+
+size_t clipRead(uint8_t *buf, size_t len) {
+  if (!clipFile) {
+    return 0;
+  }
+  return clipFile.read(buf, len);
+}
+
+bool clipSeek(size_t pos) {
+  return clipFile && clipFile.seek(pos);
+}
+
+void clipCloseRead() {
+  if (clipFile) {
+    clipFile.close();
+  }
+}
+
 bool fsExists(const char *path, bool &isDir) {
   isDir = false;
   if (!mounted) {
