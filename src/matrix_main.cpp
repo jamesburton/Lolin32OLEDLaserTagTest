@@ -177,9 +177,15 @@ int udpLogVprintf(const char *fmt, va_list args) {
   return written;
 }
 
-// Plays a WAV from the microSD by path. Shared by the `play` command and the
-// boot startup cue so both validate, parse and free identically.
+// Queues a WAV from flash storage for asynchronous playback. Shared by the
+// `play` command and the boot startup cue so both validate identically.
+// Validation (path safety, open, WAV header) is synchronous, so a bad path
+// still fails the caller; the streaming itself runs on Sound's playback task.
 bool playSdClip(const char *path);
+
+// The streaming half: reads the clip and pumps it through Sound's stream API.
+// Runs ON the playback task (core 0), registered via Sound::setFileStreamer.
+bool streamClipFromFlash(const char *path);
 
 // --- NVS persistence --------------------------------------------------------
 
@@ -567,9 +573,12 @@ bool runCommand(const cp::CommandDoc &cmd) {
     fireIr(cp::tagEventFromVatosShot(cmd.team, cmd.damage));
     return true;
   case cp::CommandKind::Play:
-    // Play a WAV straight off the card. Together with the /api/sd surface this
-    // is what makes sound content manageable remotely: upload a clip, play it,
-    // no cable and no reflash.
+    // Play a WAV from flash storage. Together with the /api/files surface
+    // this is what makes sound content manageable remotely: upload a clip,
+    // play it, no cable and no reflash. Validation is synchronous (bad paths
+    // still 400) but playback is queued to the core-0 task, so {"ok":true}
+    // returns immediately and the loop stays responsive for the clip's
+    // duration. A second play while one is running answers 400 (busy).
     return playSdClip(cmd.path);
   case cp::CommandKind::None:
     return false;
@@ -1233,16 +1242,13 @@ bool sdReady() {
                           prof.sdSckPin);
 }
 
-bool playSdClip(const char *path) {
-  if (path == nullptr || strlen(path) == 0) {
-    return false; // "" means "no clip configured" — not an error
-  }
-  if (!Storage::isSafeSdPath(path) || !Storage::fsBegin()) {
-    return false;
-  }
-
+// Opens `path` on the clip read channel and parses its WAV header, leaving
+// the read positioned wherever the header read ended. Shared by validation
+// (loop task) and streaming (playback task); the caller closes the channel.
+static bool openClipHeader(const char *path, Storage::WavView &view,
+                           size_t &dataOffset) {
   size_t fileSize = 0;
-  if (!Storage::fsOpenRead(path, fileSize)) {
+  if (!Storage::clipOpenRead(path, fileSize)) {
     Serial.printf("[fs] play '%s': not found\n", path);
     return false;
   }
@@ -1251,26 +1257,63 @@ bool playSdClip(const char *path) {
   // would cap clips at free heap (~270 KB) — a 10 s clip is 313 KB and would
   // simply fail, which is exactly what it did before this.
   uint8_t header[256];
-  const size_t got = Storage::fsRead(header, sizeof(header));
-  Storage::WavView view;
-  size_t dataOffset = 0;
+  const size_t got = Storage::clipRead(header, sizeof(header));
   const char *err = nullptr;
   if (!Storage::parseWavHeader(header, got, view, dataOffset, err)) {
     Serial.printf("[fs] play '%s': WAV rejected (%s)\n", path, err);
-    Storage::fsCloseRead();
+    Storage::clipCloseRead();
+    return false;
+  }
+  return true;
+}
+
+bool playSdClip(const char *path) {
+  if (path == nullptr || strlen(path) == 0) {
+    return false; // "" means "no clip configured" — not an error
+  }
+  if (!Storage::isSafeSdPath(path) || !Storage::fsBegin()) {
     return false;
   }
 
-  if (!Storage::fsSeek(dataOffset) || !Sound::streamBegin()) {
-    Storage::fsCloseRead();
+  // Validate synchronously — open + header parse is fast — so REST callers
+  // still get a truthful 400 for a missing/deformed clip, then hand the path
+  // to the playback task and return immediately.
+  Storage::WavView view;
+  size_t dataOffset = 0;
+  if (!openClipHeader(path, view, dataOffset)) {
+    return false;
+  }
+  Storage::clipCloseRead(); // the task re-opens; see streamClipFromFlash
+
+  if (!Sound::playFileAsync(path)) {
+    Serial.printf("[fs] play '%s': rejected (playback busy)\n", path);
+    return false;
+  }
+  return true;
+}
+
+bool streamClipFromFlash(const char *path) {
+  // Re-validate on the task: the file may have been deleted or replaced in
+  // the gap since playSdClip's check (both are cheap flash opens).
+  Storage::WavView view;
+  size_t dataOffset = 0;
+  if (!openClipHeader(path, view, dataOffset)) {
     return false;
   }
 
-  static int16_t pcm[512]; // static: 1 KB has no business on the loop stack
+  if (!Storage::clipSeek(dataOffset) || !Sound::streamBegin()) {
+    Storage::clipCloseRead();
+    return false;
+  }
+
+  static int16_t pcm[512]; // static: 1 KB has no business on the task stack
   size_t remaining = view.sampleCount * 2;
   while (remaining > 0) {
+    if (Sound::abortRequested()) {
+      break; // a game cue pre-empted this clip; stop between chunks
+    }
     const size_t want = remaining < sizeof(pcm) ? remaining : sizeof(pcm);
-    const size_t n = Storage::fsRead((uint8_t *)pcm, want);
+    const size_t n = Storage::clipRead((uint8_t *)pcm, want);
     if (n == 0) {
       break; // truncated file; play what we have rather than hang
     }
@@ -1279,7 +1322,7 @@ bool playSdClip(const char *path) {
   }
 
   Sound::streamEnd();
-  Storage::fsCloseRead();
+  Storage::clipCloseRead();
   Serial.printf("[fs] played '%s' (%u samples)\n", path,
                 (unsigned)view.sampleCount);
   return true;
@@ -1493,7 +1536,10 @@ void setup() {
   BoardNvs::loadOverrides(activeProfile);
   Board::BoardProfile &profile = activeProfile;
   HitDisplay::begin(profile, teamColourHex);
-  Sound::begin(profile);
+  Sound::begin(profile); // also creates the core-0 playback task
+  // Register the file streamer immediately so the playback task can serve the
+  // startup clip queued at the end of setup(), before WiFi is even up.
+  Sound::setFileStreamer(streamClipFromFlash);
 
   // NOTE: the microSD is deliberately NOT mounted here. Mounting before
   // TagNet::begin() puts SD probing ahead of WiFi, so a card or bus that hangs
@@ -1537,8 +1583,9 @@ void setup() {
   // running, so a filesystem problem can never leave the board unreachable.
   Storage::fsBegin();
 
-  // Startup cue, last so the board is fully up before it blocks on playback.
-  // Silent unless config.startupSfx names a clip on the card — the default is
+  // Startup cue: validated here, then played asynchronously by the core-0
+  // playback task while boot completes — setup no longer blocks on it.
+  // Silent unless config.startupSfx names a clip in flash — the default is
   // "" precisely so this changes nothing for an unconfigured board.
   if (config.startupSfx[0] != '\0') {
     Serial.printf("[sfx] startup clip '%s'\n", config.startupSfx);

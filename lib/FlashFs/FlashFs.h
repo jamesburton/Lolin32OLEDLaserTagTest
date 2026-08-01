@@ -62,6 +62,37 @@ bool fsSeek(size_t pos);
 /// Closes the open read.
 void fsCloseRead();
 
+// --- Clip playback read channel ---------------------------------------------
+// A SECOND, dedicated streaming-read handle, mirroring fsOpenRead/fsRead/
+// fsSeek/fsCloseRead. The audio playback task (core 0) streams a clip through
+// this channel while REST handlers on core 1 keep using the primary one — a
+// shared handle would let an upload ack or `sdcopy` close the clip mid-play.
+// Cross-task filesystem access itself is safe: esp_littlefs serialises every
+// operation behind an internal mutex.
+
+/// <summary>
+/// Opens a file on the clip playback channel. Only one clip read may be open
+/// at a time.
+/// </summary>
+/// <param name="path">Absolute file path.</param>
+/// <param name="size">Receives the file length in bytes.</param>
+/// <returns>True when the file opened.</returns>
+bool clipOpenRead(const char *path, size_t &size);
+
+/// <summary>Reads up to <paramref name="len"/> bytes from the open clip.</summary>
+/// <param name="buf">Destination buffer.</param>
+/// <param name="len">Maximum bytes to read.</param>
+/// <returns>Bytes actually read; 0 at end of file or when not open.</returns>
+size_t clipRead(uint8_t *buf, size_t len);
+
+/// <summary>Moves the open clip read to an absolute byte offset.</summary>
+/// <param name="pos">Absolute offset from the start of the file.</param>
+/// <returns>True when the seek succeeded.</returns>
+bool clipSeek(size_t pos);
+
+/// <summary>Closes the open clip read.</summary>
+void clipCloseRead();
+
 /// True when the path exists; sets isDir accordingly.
 bool fsExists(const char *path, bool &isDir);
 
