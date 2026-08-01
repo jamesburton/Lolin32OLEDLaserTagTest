@@ -31,6 +31,7 @@
 #include <BoardProfile.h>
 #include <BoardNvs.h>
 #include <HitDisplay.h>
+#include <OledStatus.h>
 #include <FlashFs.h>
 #include <SdCard.h>
 #include <SdPath.h>
@@ -48,7 +49,7 @@ namespace cp = ControlProto;
 // Firmware version reported on the wire (contract §1.3 fw=). BUMP THIS on
 // every behavioural firmware change — the host's fleet updater compares it
 // against the built image to decide who needs an OTA (fleet-ota spec).
-#define LT_FW_VERSION "2.6.0"
+#define LT_FW_VERSION "2.7.1"
 static const char *kFirmwareVersion = LT_FW_VERSION;
 
 // Embedded marker so the host can read a firmware.bin's version by scanning
@@ -1522,6 +1523,12 @@ void setup() {
   Sound::setVolume(config.volume);
   applyExtRole();
 
+  // Optional carrier OLED (J9, SH1107 128x128 on GP4/GP5, either pin
+  // orientation): probed, so boards without one skip silently.
+  if (OledStatus::begin(4, 5)) {
+    Serial.println("oled: SH1107 detected on GP4/GP5");
+  }
+
   esp_log_set_vprintf(udpLogVprintf); // enables `sdtest`'s remote log capture
   TagNet::onLine(onLine);             // CTL + legacy bright/hit/debug
   TagNet::onStatus(matrixStatus);     // HTTP "/" status
@@ -1579,6 +1586,17 @@ void loop() {
   // so the diagnostic frame isn't repainted mid-look.
   if (identifyUntilMs == 0) {
     HitDisplay::extTick(now, config.ownTeam);
+  }
+
+  // OLED status refresh (1 Hz; no-op without a display).
+  if (OledStatus::present()) {
+    static uint32_t lastOledMs = 0;
+    if (now - lastOledMs >= 1000) {
+      lastOledMs = now;
+      OledStatus::showStatus(config.hostname, kFirmwareVersion,
+                             WiFi.localIP().toString().c_str(), config.ownTeam,
+                             hp, config.startHp, now / 1000);
+    }
   }
 
   // Switch the activity LED off once its pulse has elapsed
