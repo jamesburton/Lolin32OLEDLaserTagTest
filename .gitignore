@@ -486,3 +486,4 @@ $RECYCLE.BIN/
 
 # Local signature-library backups / scratch captures
 signatures.*-backup.json
+.claude/worktrees/
